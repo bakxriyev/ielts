@@ -1,0 +1,48 @@
+# Dependencies
+/node_modules
+
+# Build output
+/.next
+/out
+
+
+# Production
+/build
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Local environment files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.swm
+
+# Mac system files
+.DS_Store
+
+# Optional: OS-specific
+Thumbs.db
+
+# Next.js export
+.next/
+out/
+
+# Coverage
+coverage/
+
+# Logs
+logs
+*.log
