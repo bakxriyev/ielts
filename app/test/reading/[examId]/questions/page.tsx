@@ -143,7 +143,7 @@ export default function ReadingTestPage() {
   const fetchTestData = async () => {
     try {
       setIsLoading(true)
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
       console.log("[v0] Fetching reading test data from:", `${API_BASE_URL}/exams/${examId}`)
 
       const controller = new AbortController()
@@ -242,7 +242,7 @@ export default function ReadingTestPage() {
     if (!user?.id) return
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
       await fetch(`${API_BASE_URL}/reading-answers`, {
         method: "POST",
         headers: {
@@ -277,7 +277,7 @@ export default function ReadingTestPage() {
         setShowSubmitLoading(true)
 
         try {
-          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
           const answerPromises = Object.entries(answers).map(([questionId, answer]) =>
             fetch(`${API_BASE_URL}/reading-answers`, {
               method: "POST",

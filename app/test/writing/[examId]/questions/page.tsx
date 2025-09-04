@@ -101,7 +101,7 @@ export default function WritingTestPage() {
   const fetchTestData = async () => {
     try {
       setIsLoading(true)
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
       const response = await fetch(`${API_BASE_URL}/exams/${examId}`)
 
       if (!response.ok) {
@@ -151,7 +151,7 @@ export default function WritingTestPage() {
 
   const submitSingleAnswer = async (taskId: string, answer: string) => {
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
       await fetch(`${API_BASE_URL}/writing-answers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -179,7 +179,7 @@ export default function WritingTestPage() {
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
         try {
-          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
           const answerPromises = Object.entries(answers).map(([taskId, answer]) =>
             fetch(`${API_BASE_URL}/writing-answers`, {
               method: "POST",

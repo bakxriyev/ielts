@@ -36,7 +36,7 @@ export default function JoinPage() {
     }
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
       console.log("[v0] Fetching user data for ID:", userId)
 

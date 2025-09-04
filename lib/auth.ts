@@ -31,7 +31,7 @@ export async function loginUser(username: string, password: string): Promise<Log
   }
 
   try {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: "POST",
       headers: {
@@ -69,7 +69,7 @@ export async function registerUser(
   try {
     console.log("[v0] Registration data:", { name, email, username, password: password ? "***" : "empty" })
 
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
     const requestBody = { name, email, username, password }
 
     console.log("[v0] Sending registration request to:", `${API_BASE_URL}/auth/register`)

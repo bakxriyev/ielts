@@ -83,7 +83,7 @@ export default function ListeningTestPage() {
   const fetchTestData = async () => {
     try {
       setIsLoading(true)
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
       const response = await fetch(`${API_BASE_URL}/exams/${examId}`)
 
       if (!response.ok) {

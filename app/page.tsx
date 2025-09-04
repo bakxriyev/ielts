@@ -12,7 +12,7 @@ export default function HomePage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   if (user) {
-    window.location.href = "/dashboard"
+    window.location.href = "/join"
     return null
   }
 
