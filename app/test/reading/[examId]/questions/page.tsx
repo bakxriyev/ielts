@@ -62,7 +62,7 @@ export default function ReadingTestPage() {
     const checkCompletion = async () => {
       if (!user?.id) {
         console.log("[v0] No user found, redirecting to login")
-        router.push("/login")
+        router.push("/join")
         return
       }
 

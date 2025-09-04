@@ -75,15 +75,7 @@ const MockTestPage = () => {
   const { showAlert, AlertComponent } = useCustomAlert()
 
   useEffect(() => {
-    const checkAuth = () => {
-      const user = getStoredUser()
-      if (!user) {
-        router.push("/join")
-        return
-      }
-
-      fetchExamData()
-    }
+    
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault()
@@ -92,7 +84,6 @@ const MockTestPage = () => {
     }
 
     window.addEventListener("beforeunload", handleBeforeUnload)
-    checkAuth()
 
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload)

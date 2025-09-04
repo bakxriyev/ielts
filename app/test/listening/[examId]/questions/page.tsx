@@ -125,7 +125,7 @@ export default function ListeningTestPage() {
 
   const submitSingleAnswer = async (questionId: number, answer: string) => {
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
       await fetch(`${API_BASE_URL}/listening-answers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -153,7 +153,7 @@ export default function ListeningTestPage() {
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
         try {
-          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
           const answerPromises = Object.entries(answers).map(([questionId, answer]) =>
             fetch(`${API_BASE_URL}/listening-answers`, {
               method: "POST",

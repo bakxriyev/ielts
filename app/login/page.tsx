@@ -35,7 +35,7 @@ export default function AuthPage() {
 
     if (result.success && result.user) {
       setUser(result.user)
-      router.push("/dashboard")
+      router.push("/")
     } else {
       setError(result.message || "Login failed. Please try again.")
     }

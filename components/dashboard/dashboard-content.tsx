@@ -39,7 +39,7 @@ export function DashboardContent() {
       setIsLoading(true)
       console.log("[v0] Fetching exam data from backend")
 
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
       const response = await fetch(`${API_BASE_URL}/exams`, {
         method: "GET",
         headers: {
