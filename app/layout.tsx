@@ -9,7 +9,7 @@ import "./globals.css"
 export const metadata: Metadata = {
   title: "IELTS Mock Test Platform",
   description: "Practice IELTS with comprehensive mock tests - Reading, Listening, and Writing sections",
-  generator: "v0.app",
+  generator: "ITZONE COMPANY",
 }
 
 export default function RootLayout({

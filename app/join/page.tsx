@@ -1,12 +1,12 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
-import { Button } from "../../components/ui/button"
-import { Input } from "../../components/ui/input"
-import { Label } from "../../components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
-import { Alert, AlertDescription } from "../../components/ui/alert"
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -18,6 +18,12 @@ export default function JoinPage() {
   const [error, setError] = useState("")
   const { setUser } = useAuth()
   const router = useRouter()
+
+  useEffect(() => {
+    // Clear all localStorage data for a fresh start
+    localStorage.clear()
+    console.log("[v0] Cleared all localStorage data on join page entry")
+  }, [])
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,7 +42,7 @@ export default function JoinPage() {
     }
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 
       console.log("[v0] Fetching user data for ID:", userId)
 

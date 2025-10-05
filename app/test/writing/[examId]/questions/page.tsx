@@ -1,13 +1,21 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import type React from "react"
+
+import { useEffect, useState, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Button } from "../../../../../components/ui/button"
+import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Timer } from "../../../../../components//timer"
-import { saveTestProgress, markSectionCompleted } from "../../../../../lib/test-strotage"
-import { Wifi, Volume2, Settings, AlertTriangle } from "lucide-react"
+import { Timer } from "@/components/timer"
+import {
+  saveTestProgress,
+  markSectionCompleted,
+  areAllSectionsCompleted,
+  checkWritingCompletion,
+} from "../../../../../lib/test-strotage"
+import { Wifi, Volume2, Settings, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react"
 import { useCustomAlert } from "../../../../../components/custom-allert"
+import { CompletionModal } from "../../../../../components/completion-modal"
 import Link from "next/link"
 import Image from "next/image"
 
@@ -17,6 +25,7 @@ interface WritingTask {
   part: string
   task_text: string
   task_image?: string
+  writing_id: number
 }
 
 interface WritingTestData {
@@ -37,12 +46,31 @@ export default function WritingTestPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showSubmitLoading, setShowSubmitLoading] = useState(false)
   const [wordCount, setWordCount] = useState(0)
-  const [userId] = useState(1)
+  const [currentPartIndex, setCurrentPartIndex] = useState(0)
+  const [userId, setUserId] = useState<string>("1")
+  const [showCompletionModal, setShowCompletionModal] = useState(false)
   const { showAlert, AlertComponent } = useCustomAlert()
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const examId = params.examId as string
 
+  const WRITING_DURATION = 60 * 60
+
+  const getUserId = () => {
+    try {
+      const userData = localStorage.getItem("user")
+      if (userData) {
+        const user = JSON.parse(userData)
+        return user.id ? String(user.id) : "1"
+      }
+    } catch (error) {
+      console.error("[v0] Error parsing user data from localStorage:", error)
+    }
+    return "1" // fallback to "1" as string if no user data found
+  }
+
   useEffect(() => {
+    setUserId(getUserId())
     fetchTestData()
   }, [examId])
 
@@ -56,11 +84,19 @@ export default function WritingTestPage() {
 
       if (savedTime && savedAnswers) {
         setTimeRemaining(Number.parseInt(savedTime))
-        setAnswers(JSON.parse(savedAnswers))
+        const parsedAnswers = JSON.parse(savedAnswers)
+        const simpleAnswers: Record<string, string> = {}
+        Object.entries(parsedAnswers).forEach(([taskId, data]: [string, any]) => {
+          if (typeof data === "object" && data.answer_text) {
+            simpleAnswers[taskId] = data.answer_text
+          } else if (typeof data === "string") {
+            simpleAnswers[taskId] = data
+          }
+        })
+        setAnswers(simpleAnswers)
       } else {
-        const initialTime = (testData.duration || 60) * 60
-        setTimeRemaining(initialTime)
-        localStorage.setItem(timerKey, initialTime.toString())
+        setTimeRemaining(WRITING_DURATION)
+        localStorage.setItem(timerKey, WRITING_DURATION.toString())
       }
     }
   }, [testData, examId, timeRemaining])
@@ -72,7 +108,19 @@ export default function WritingTestPage() {
         const answersKey = `answers_${examId}_writing`
 
         localStorage.setItem(timerKey, timeRemaining.toString())
-        localStorage.setItem(answersKey, JSON.stringify(answers))
+
+        const exactApiFormat: Record<string, any> = {}
+        Object.entries(answers).forEach(([taskId, answer]) => {
+          const currentTask = testData?.writings.find((w) => w.id === taskId)
+          exactApiFormat[taskId] = {
+            user_id: String(userId),
+            exam_id: Number(examId),
+            writing_id: currentTask?.writing_id || Number(taskId),
+            answer_text: answer,
+            part: currentTask?.part || "PART1", // Added part field
+          }
+        })
+        localStorage.setItem(answersKey, JSON.stringify(exactApiFormat))
 
         saveTestProgress({
           mockTestId: examId,
@@ -82,26 +130,32 @@ export default function WritingTestPage() {
           completed: false,
         })
       }
-    }, 5000)
+    }, 2000)
 
     return () => clearInterval(interval)
-  }, [answers, timeRemaining, testData, examId])
+  }, [answers, timeRemaining, testData, examId, userId])
 
   useEffect(() => {
-    if (testData?.writings[0]) {
-      const text = answers[testData.writings[0].id] || ""
+    if (testData?.writings[currentPartIndex]) {
+      const text = answers[testData.writings[currentPartIndex].id] || ""
       const words = text
         .trim()
         .split(/\s+/)
         .filter((word) => word.length > 0)
       setWordCount(words.length)
     }
-  }, [answers, testData])
+  }, [answers, testData, currentPartIndex])
+
+  useEffect(() => {
+    if (timeRemaining === 0) {
+      handleSubmit()
+    }
+  }, [timeRemaining])
 
   const fetchTestData = async () => {
     try {
       setIsLoading(true)
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
       const response = await fetch(`${API_BASE_URL}/exams/${examId}`)
 
       if (!response.ok) {
@@ -109,12 +163,17 @@ export default function WritingTestPage() {
       }
 
       const data = await response.json()
+
+      const writings = data.writings || []
+      const part1Tasks = writings.filter((w: any) => w.part === "PART1" || w.part === "task1")
+      const part2Tasks = writings.filter((w: any) => w.part === "PART2" || w.part === "task2")
+
       setTestData({
         id: data.id,
         title: data.title,
         description: data.description,
-        writings: data.writings || [],
-        duration: Number.parseInt(data.duration) || 60,
+        writings: [...part1Tasks, ...part2Tasks],
+        duration: WRITING_DURATION / 60,
       })
     } catch (error) {
       console.error("Failed to fetch writing test data:", error)
@@ -122,15 +181,24 @@ export default function WritingTestPage() {
         id: examId,
         title: "IELTS Writing Test",
         description: "Complete writing test with tasks",
-        duration: 60,
+        duration: WRITING_DURATION / 60,
         writings: [
           {
             id: "1",
             exam_id: examId,
-            part: "task1",
+            part: "PART1",
+            writing_id: 1,
             task_text:
               "The chart below shows the number of adults participating in different major sports, in 1997 and 2017. Summarise the information by selecting and reporting the main features, and make comparisons where relevant. You should spend about 20 minutes on this task. Write at least 150 words.",
-            task_image: "/sports-participation-chart-1997-vs-2017.png",
+            task_image: "sports-participation-chart-1997-vs-2017.png",
+          },
+          {
+            id: "2",
+            exam_id: examId,
+            part: "PART2",
+            writing_id: 2,
+            task_text:
+              "Some people think that all university students should study whatever they like. Others believe that they should only be allowed to study subjects that will be useful in the future, such as those related to science and technology. Discuss both these views and give your own opinion. Give reasons for your answer and include any relevant examples from your own knowledge or experience. Write at least 250 words.",
           },
         ],
       })
@@ -139,32 +207,40 @@ export default function WritingTestPage() {
     }
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey && (e.key === "c" || e.key === "v" || e.key === "x")) {
+      e.preventDefault()
+      showAlert({
+        title: "Action Not Allowed",
+        description: "Copy and paste operations are disabled for security reasons.",
+        type: "warning",
+        confirmText: "OK",
+        showCancel: false,
+      })
+    }
+  }
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+  }
+
   const handleAnswerChange = (taskId: string, text: string) => {
     const newAnswers = { ...answers, [taskId]: text }
     setAnswers(newAnswers)
 
-    const answersKey = `answers_${examId}_writing`
-    localStorage.setItem(answersKey, JSON.stringify(newAnswers))
-
-    submitSingleAnswer(taskId, text)
-  }
-
-  const submitSingleAnswer = async (taskId: string, answer: string) => {
-    try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
-      await fetch(`${API_BASE_URL}/writing-answers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: userId,
-          writing_id: Number.parseInt(taskId),
-          examId: Number.parseInt(examId),
-          answer_text: answer,
-        }),
-      })
-    } catch (error) {
-      console.error("Failed to save answer:", error)
+    const currentTask = testData?.writings.find((w) => w.id === taskId)
+    const exactApiFormat = {
+      user_id: String(userId),
+      exam_id: Number(examId),
+      writing_id: currentTask?.writing_id || Number(taskId),
+      answer_text: text,
+      part: currentTask?.part || "PART1", // Added part field
     }
+
+    const answersKey = `answers_${examId}_writing`
+    const existingAnswers = JSON.parse(localStorage.getItem(answersKey) || "{}")
+    existingAnswers[taskId] = exactApiFormat
+    localStorage.setItem(answersKey, JSON.stringify(existingAnswers))
   }
 
   const handleSubmit = async () => {
@@ -179,33 +255,43 @@ export default function WritingTestPage() {
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
         try {
-          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
-          const answerPromises = Object.entries(answers).map(([taskId, answer]) =>
-            fetch(`${API_BASE_URL}/writing-answers`, {
+          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+          const answerPromises = Object.entries(answers).map(([taskId, answer]) => {
+            const currentTask = testData?.writings.find((w) => w.id === taskId)
+            return fetch(`${API_BASE_URL}/writing-answers`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                userId: userId,
-                writing_id: Number.parseInt(taskId),
-                examId: Number.parseInt(examId),
+                user_id: String(userId),
+                exam_id: Number(examId),
+                writing_id: currentTask?.writing_id || Number(taskId),
                 answer_text: answer,
+                part: currentTask?.part || "PART1", // Added part field
               }),
-            }),
-          )
+            })
+          })
 
           await Promise.all(answerPromises)
           localStorage.removeItem(`timer_${examId}_writing`)
           localStorage.removeItem(`answers_${examId}_writing`)
-          markSectionCompleted(examId, "writing")
 
-          showAlert({
-            title: "Test Completed Successfully!",
-            description: "Your answers have been saved. Redirecting to results page...",
-            type: "success",
-            confirmText: "Continue",
-            showCancel: false,
-            onConfirm: () => router.push(`/mock/${examId}`),
-          })
+          const writingCompleted = await checkWritingCompletion(String(userId), examId)
+          if (writingCompleted) {
+            markSectionCompleted(examId, "writing")
+          }
+
+          if (areAllSectionsCompleted(examId)) {
+            setShowCompletionModal(true)
+          } else {
+            showAlert({
+              title: "Test Completed Successfully!",
+              description: "Your answers have been saved. Redirecting to results page...",
+              type: "success",
+              confirmText: "Continue",
+              showCancel: false,
+              onConfirm: () => router.push(`/mock/${examId}`),
+            })
+          }
         } catch (error) {
           console.error("Failed to submit writing test:", error)
         } finally {
@@ -221,6 +307,18 @@ export default function WritingTestPage() {
     localStorage.setItem(timerKey, newTime.toString())
   }
 
+  const goToPreviousPart = () => {
+    if (currentPartIndex > 0) {
+      setCurrentPartIndex(currentPartIndex - 1)
+    }
+  }
+
+  const goToNextPart = () => {
+    if (testData && currentPartIndex < testData.writings.length - 1) {
+      setCurrentPartIndex(currentPartIndex + 1)
+    }
+  }
+
   if (isLoading || timeRemaining === null) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -232,7 +330,7 @@ export default function WritingTestPage() {
     )
   }
 
-  if (!testData || !testData.writings[0]) {
+  if (!testData || testData.writings.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-100 flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-8">
@@ -258,12 +356,13 @@ export default function WritingTestPage() {
     )
   }
 
-  const currentTask = testData.writings[0]
-  const minWords = currentTask.part === "task1" ? 150 : 250
+  const currentTask = testData.writings[currentPartIndex]
+  const minWords = currentTask.part === "PART1" || currentTask.part === "task1" ? 150 : 250
 
   return (
     <div className="min-h-screen bg-gray-50">
       <AlertComponent />
+      <CompletionModal isOpen={showCompletionModal} onClose={() => setShowCompletionModal(false)} />
 
       <header className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -272,12 +371,14 @@ export default function WritingTestPage() {
             <div className="text-gray-600 text-sm">Test taker ID: Student</div>
           </div>
           <div className="flex items-center gap-4">
-            <Timer
-              initialTime={timeRemaining}
-              onTimeUpdate={handleTimeUpdate}
-              onTimeUp={handleSubmit}
-              className="text-lg font-mono bg-gray-100 px-4 py-2 rounded border"
-            />
+            <div className="bg-red-100 border border-red-300 px-4 py-2 rounded-lg">
+              <Timer
+                initialTime={timeRemaining}
+                onTimeUpdate={handleTimeUpdate}
+                onTimeUp={handleSubmit}
+                className="text-lg font-mono text-red-700 font-bold"
+              />
+            </div>
             <Wifi className="h-5 w-5 text-gray-600" />
             <Volume2 className="h-5 w-5 text-gray-600" />
             <Settings className="h-5 w-5 text-gray-600" />
@@ -286,17 +387,49 @@ export default function WritingTestPage() {
       </header>
 
       <div className="bg-gray-100 border-b border-gray-200 px-4 py-3">
-        <div className="max-w-7xl mx-auto">
-          <h2 className="text-lg font-semibold text-gray-900">Part 1</h2>
-          <p className="text-sm text-gray-600">
-            You should spend about 20 minutes on this task. Write at least 150 words.
-          </p>
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {currentTask.part === "PART1" || currentTask.part === "task1" ? "Part 1" : "Part 2"}
+            </h2>
+            <p className="text-sm text-gray-600">
+              {currentTask.part === "PART1" || currentTask.part === "task1"
+                ? "You should spend about 20 minutes on this task. Write at least 150 words."
+                : "You should spend about 40 minutes on this task. Write at least 250 words."}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={goToPreviousPart}
+              disabled={currentPartIndex === 0}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-1 bg-transparent"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+            <span className="text-sm text-gray-600 px-2">
+              {currentPartIndex + 1} of {testData.writings.length}
+            </span>
+            <Button
+              onClick={goToNextPart}
+              disabled={currentPartIndex >= testData.writings.length - 1}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-1"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="flex h-[calc(100vh-140px)]">
-        <div className="w-1/2 border-r border-gray-300 overflow-y-auto bg-white">
-          <div className="p-8">
+      <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)]">
+        <div className="w-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-gray-300 overflow-y-auto bg-white">
+          <div className="p-4 lg:p-8">
             <div className="space-y-6">
               <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed">
                 <p className="mb-6 text-sm leading-7">{currentTask.task_text}</p>
@@ -305,11 +438,11 @@ export default function WritingTestPage() {
               {currentTask.task_image && (
                 <div className="border rounded-lg p-4 bg-gray-50">
                   <Image
-                    src={currentTask.task_image || "/placeholder.svg"}
+                    src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/uploads/writing/${currentTask.task_image}`}
                     alt="Writing task chart"
-                    width={600}
-                    height={400}
-                    className="w-full h-auto"
+                    width={400}
+                    height={250}
+                    className="w-full h-auto max-w-md mx-auto"
                   />
                 </div>
               )}
@@ -317,14 +450,20 @@ export default function WritingTestPage() {
           </div>
         </div>
 
-        <div className="w-1/2 overflow-y-auto bg-white">
-          <div className="p-8 h-full flex flex-col">
+        <div className="w-full lg:w-1/2 overflow-y-auto bg-white">
+          <div className="p-4 lg:p-8 h-full flex flex-col">
             <div className="mb-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-lg text-gray-900">Your Response</h3>
                 <div className="text-sm">
                   <span
-                    className={`font-medium ${wordCount >= minWords ? "text-green-600" : wordCount >= minWords * 0.8 ? "text-orange-600" : "text-red-600"}`}
+                    className={`font-medium ${
+                      wordCount >= minWords
+                        ? "text-green-600"
+                        : wordCount >= minWords * 0.8
+                          ? "text-orange-600"
+                          : "text-red-600"
+                    }`}
                   >
                     Words: {wordCount}
                   </span>
@@ -334,13 +473,16 @@ export default function WritingTestPage() {
             </div>
 
             <Textarea
+              ref={textareaRef}
               value={answers[currentTask.id] || ""}
               onChange={(e) => handleAnswerChange(currentTask.id, e.target.value)}
+              onKeyDown={handleKeyDown}
+              onContextMenu={handleContextMenu}
               placeholder="Start writing your response here..."
-              className="flex-1 min-h-[400px] resize-none text-sm leading-relaxed border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+              className="flex-1 min-h-[300px] lg:min-h-[400px] resize-none text-sm leading-relaxed border-gray-300 focus:border-blue-500 focus:ring-blue-500"
             />
 
-            <div className="mt-6 flex items-center justify-between">
+            <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="text-sm text-gray-600">
                 {wordCount < minWords && (
                   <span className="text-orange-600">You need at least {minWords - wordCount} more words</span>
@@ -351,7 +493,7 @@ export default function WritingTestPage() {
               <Button
                 onClick={handleSubmit}
                 disabled={isSubmitting || showSubmitLoading}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-2 text-base font-medium rounded-lg shadow-lg"
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-2 text-base font-medium rounded-lg shadow-lg w-full sm:w-auto"
               >
                 {isSubmitting || showSubmitLoading ? "Submitting..." : "Submit Test"}
               </Button>

@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 
 interface UserAnswer {
   id: number
@@ -22,7 +22,7 @@ interface UserData {
 }
 
 export async function checkSectionCompletion(
-  userId: number,
+  userId: string,
   examId: string,
   section: "reading" | "listening" | "writing",
 ): Promise<boolean> {

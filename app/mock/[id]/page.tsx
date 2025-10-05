@@ -3,17 +3,18 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Button } from "../../../components/ui/button"
-import { Card, CardContent } from "../../../components/ui/card"
-import { Badge } from "../../../components/ui/badge"
-import { ThemeToggle } from "../../../components/theme-toggle"
-import { PasswordModal } from "../../../components/password-modal"
-import { BookOpen, Headphones, PenTool, Play, AlertTriangle, ArrowLeft } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { PasswordModal } from "@/components/password-modal"
+import { CompletionModal } from "@/components/completion-modal"
+import { BookOpen, Headphones, PenTool, Play, AlertTriangle } from "lucide-react"
 import { getStoredUser } from "@/lib/auth"
 import { useCustomAlert } from "../../../components/custom-allert"
 import { checkSectionCompletion } from "../../../lib/completed-cheker"
+import { checkWritingCompletion } from "../../../lib/test-strotage"
 import Image from "next/image"
-import Link from "next/link"
 
 interface ExamSection {
   id: string
@@ -69,13 +70,41 @@ const MockTestPage = () => {
   const [examData, setExamData] = useState<ExamData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showPasswordModal, setShowPasswordModal] = useState(true)
+  const [showPasswordModal, setShowPasswordModal] = useState(false) // Changed default to false
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [completionStatus, setCompletionStatus] = useState<{ [key: string]: boolean }>({})
+  const [showCompletionModal, setShowCompletionModal] = useState(false)
   const { showAlert, AlertComponent } = useCustomAlert()
 
+  const checkPasswordInStorage = (examId: string, actualPassword: string): boolean => {
+    try {
+      const savedPassword = localStorage.getItem(`exam_password_${examId}`)
+      // Check if saved password matches the actual mock password
+      return savedPassword === actualPassword
+    } catch (error) {
+      console.error("Error checking password in storage:", error)
+      return false
+    }
+  }
+
+  const savePasswordToStorage = (examId: string, password: string) => {
+    try {
+      localStorage.setItem(`exam_password_${examId}`, password)
+    } catch (error) {
+      console.error("Error saving password to storage:", error)
+    }
+  }
+
   useEffect(() => {
-    
+    const checkAuth = () => {
+      const user = getStoredUser()
+      if (!user) {
+        router.push("/login")
+        return
+      }
+
+      fetchExamData()
+    }
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault()
@@ -84,29 +113,57 @@ const MockTestPage = () => {
     }
 
     window.addEventListener("beforeunload", handleBeforeUnload)
+    checkAuth()
 
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload)
     }
   }, [params.id, router])
 
+  useEffect(() => {
+    if (examData) {
+      const examId = params.id as string
+      const actualPassword = examData.password 
+      const isPasswordValid = checkPasswordInStorage(examId, actualPassword)
+
+      if (isPasswordValid) {
+        setIsAuthenticated(true)
+        setShowPasswordModal(false)
+      } else {
+        setShowPasswordModal(true)
+        setIsAuthenticated(false)
+      }
+    }
+  }, [examData, params.id])
+
   const checkAllSectionsCompletion = async () => {
     const user = getStoredUser()
     if (!user?.id || !params.id) return
 
     try {
-      const examId = Number.parseInt(params.id as string)
+      const examId = params.id as string
       const [readingCompleted, listeningCompleted, writingCompleted] = await Promise.all([
         checkSectionCompletion(user.id, examId, "reading"),
         checkSectionCompletion(user.id, examId, "listening"),
-        checkSectionCompletion(user.id, examId, "writing"),
+        checkWritingCompletion(user.id, examId),
       ])
 
-      setCompletionStatus({
+      console.log(
+        `[v0] Completion status - Reading: ${readingCompleted}, Listening: ${listeningCompleted}, Writing: ${writingCompleted}`,
+      )
+
+      const newCompletionStatus = {
         reading: readingCompleted,
         listening: listeningCompleted,
         writing: writingCompleted,
-      })
+      }
+
+      setCompletionStatus(newCompletionStatus)
+
+      if (readingCompleted && listeningCompleted && writingCompleted) {
+        console.log(`[v0] All sections completed! Showing celebration modal`)
+        setShowCompletionModal(true)
+      }
     } catch (error) {
       console.error("Failed to check completion status:", error)
     }
@@ -116,7 +173,7 @@ const MockTestPage = () => {
     try {
       setIsLoading(true)
 
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
       const response = await fetch(`${API_BASE_URL}/exams/${params.id}`)
 
       if (!response.ok) {
@@ -181,12 +238,16 @@ const MockTestPage = () => {
   }
 
   const handlePasswordSuccess = () => {
+    const examId = params.id as string
+    const actualPassword = examData?.password || "mock123"
+    savePasswordToStorage(examId, actualPassword)
+
     setIsAuthenticated(true)
     setShowPasswordModal(false)
   }
 
   const handlePasswordClose = () => {
-    router.push("/join")
+    router.push("/dashboard")
   }
 
   const handleStartSection = (sectionName: string, isCompleted: boolean) => {
@@ -255,11 +316,12 @@ const MockTestPage = () => {
         examTitle={examData?.title || "Mock Test"}
       />
 
+      <CompletionModal isOpen={showCompletionModal} onClose={() => setShowCompletionModal(false)} />
+
       <nav className="border-b border-blue-800/30 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-4">
-            
               <div className="flex items-center gap-2 sm:gap-3">
                 <Image
                   src="/realieltsexam-logo.png"
@@ -306,7 +368,6 @@ const MockTestPage = () => {
                   {getStoredUser()?.email && (
                     <>
                       <span className="mx-2">•</span>
-                      <span className="font-medium">Email:</span> {getStoredUser()?.email}
                     </>
                   )}
                 </div>
@@ -374,17 +435,8 @@ const MockTestPage = () => {
                                   <Badge className="bg-green-600 text-white self-start">Completed</Badge>
                                 )}
                               </div>
-                              <div className="text-blue-300 mb-3 text-base sm:text-lg">{section.description}</div>
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs sm:text-sm text-blue-400">
-                                <span className="flex items-center gap-2">
-                                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                                  {section.parts} {section.parts === 1 ? "Part" : "Parts"}
-                                </span>
-                                <span className="flex items-center gap-2">
-                                  <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
-                                  {section.duration}
-                                </span>
-                              </div>
+
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs sm:text-sm text-blue-400"></div>
                             </div>
                           </div>
                           <div className="flex items-center justify-center sm:justify-end">

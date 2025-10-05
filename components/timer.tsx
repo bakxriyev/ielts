@@ -69,9 +69,9 @@ export function Timer({ initialTime, isActive = true, onTimeUpdate, onTimeUp, cl
   }
 
   const getTimerColor = () => {
-    if (timeRemaining <= 300) return "text-red-600" // Last 5 minutes
-    if (timeRemaining <= 600) return "text-orange-600" // Last 10 minutes
-    return "text-gray-900 dark:text-gray-100"
+    if (timeRemaining <= 300) return "text-black-600" // Last 5 minutes
+    if (timeRemaining <= 600) return "text-red-900" // Last 10 minutes
+    return "text-black-900 dark:text-black-100"
   }
 
   return (
