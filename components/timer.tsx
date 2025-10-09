@@ -4,15 +4,26 @@ import { useEffect, useState, useRef } from "react"
 import { Clock } from "lucide-react"
 
 interface TimerProps {
-  initialTime: number // in seconds
-  isActive?: boolean // Added isActive prop to control countdown
+  initialMinutes?: number
+  initialTime?: number // in seconds
+  isActive?: boolean
   onTimeUpdate?: (timeRemaining: number) => void
   onTimeUp?: () => void
   className?: string
+  textColor?: string
 }
 
-export function Timer({ initialTime, isActive = true, onTimeUpdate, onTimeUp, className = "" }: TimerProps) {
-  const [timeRemaining, setTimeRemaining] = useState(initialTime)
+function Timer({
+  initialMinutes,
+  initialTime,
+  isActive = true,
+  onTimeUpdate,
+  onTimeUp,
+  className = "",
+  textColor = "text-gray-900 dark:text-gray-100",
+}: TimerProps) {
+  const initialSeconds = initialTime || (initialMinutes ? initialMinutes * 60 : 0)
+  const [timeRemaining, setTimeRemaining] = useState(initialSeconds)
   const onTimeUpdateRef = useRef(onTimeUpdate)
   const onTimeUpRef = useRef(onTimeUp)
 
@@ -22,8 +33,8 @@ export function Timer({ initialTime, isActive = true, onTimeUpdate, onTimeUp, cl
   }, [onTimeUpdate, onTimeUp])
 
   useEffect(() => {
-    setTimeRemaining(initialTime)
-  }, [initialTime])
+    setTimeRemaining(initialSeconds)
+  }, [initialSeconds])
 
   useEffect(() => {
     if (onTimeUpdateRef.current) {
@@ -46,7 +57,6 @@ export function Timer({ initialTime, isActive = true, onTimeUpdate, onTimeUp, cl
         const newTime = prev - 1
 
         if (newTime <= 0) {
-          // onTimeUp will be called in the next useEffect when timeRemaining becomes 0
           return 0
         }
 
@@ -55,7 +65,7 @@ export function Timer({ initialTime, isActive = true, onTimeUpdate, onTimeUp, cl
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [timeRemaining, isActive]) // Added isActive to dependencies
+  }, [timeRemaining, isActive])
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600)
@@ -69,9 +79,9 @@ export function Timer({ initialTime, isActive = true, onTimeUpdate, onTimeUp, cl
   }
 
   const getTimerColor = () => {
-    if (timeRemaining <= 300) return "text-black-600" // Last 5 minutes
-    if (timeRemaining <= 600) return "text-red-900" // Last 10 minutes
-    return "text-black-900 dark:text-black-100"
+    if (timeRemaining <= 300) return "text-red-600"
+    if (timeRemaining <= 600) return "text-orange-600"
+    return textColor
   }
 
   return (
@@ -81,3 +91,6 @@ export function Timer({ initialTime, isActive = true, onTimeUpdate, onTimeUp, cl
     </div>
   )
 }
+
+export { Timer }
+export default Timer

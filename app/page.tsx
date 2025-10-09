@@ -40,11 +40,11 @@ export default function HomePage() {
                     Login
                   </Button>
                 </Link>
-                <Link href="/login">
+                {/* <Link href="/login">
                   <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/25">
                     Register
                   </Button>
-                </Link>
+                </Link> */}
               </div>
             </div>
 
@@ -160,22 +160,22 @@ export default function HomePage() {
               <h3 className="text-lg font-semibold mb-4 text-blue-300">Quick Links</h3>
               <ul className="space-y-2">
                 <li>
-                  <Link href="/login" className="text-slate-300 hover:text-blue-300 transition-colors">
+                  <Link href="/join" className="text-slate-300 hover:text-blue-300 transition-colors">
                     Practice Tests
                   </Link>
                 </li>
                 <li>
-                  <Link href="/login" className="text-slate-300 hover:text-blue-300 transition-colors">
+                  <Link href="/join" className="text-slate-300 hover:text-blue-300 transition-colors">
                     Mock Exams
                   </Link>
                 </li>
                 <li>
-                  <Link href="/login" className="text-slate-300 hover:text-blue-300 transition-colors">
+                  <Link href="/join" className="text-slate-300 hover:text-blue-300 transition-colors">
                     Study Materials
                   </Link>
                 </li>
                 <li>
-                  <Link href="/login" className="text-slate-300 hover:text-blue-300 transition-colors">
+                  <Link href="/join" className="text-slate-300 hover:text-blue-300 transition-colors">
                     Score Reports
                   </Link>
                 </li>
@@ -186,26 +186,31 @@ export default function HomePage() {
               <h3 className="text-lg font-semibold mb-4 text-blue-300">Contact Us</h3>
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
-                  <Phone size={16} className="text-blue-400" />
-                  <span className="text-slate-300">+1 (555) 123-4567</span>
-                </div>
-                <div className="flex items-center gap-3">
                   <Mail size={16} className="text-blue-400" />
-                  <span className="text-slate-300">info@realieltsexam.com</span>
+                  <span className="text-slate-300">realexamielts@gmail.com</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <MapPin size={16} className="text-blue-400" />
-                  <span className="text-slate-300">New York, NY</span>
+                  <span className="text-slate-300">Tashkent</span>
                 </div>
+                <div>
+                <div className="flex items-center gap-10">
+                <Link href="https://t.me/realexamielts" className="flex items-center gap-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640">
+                    <path d="M320 72C183 72 72 183 72 320C72 457 183 568 320 568C457 568 568 457 568 320C568 183 457 72 320 72zM435 240.7C431.3 279.9 415.1 375.1 406.9 419C403.4 437.6 396.6 443.8 390 444.4C375.6 445.7 364.7 434.9 350.7 425.7C328.9 411.4 316.5 402.5 295.4 388.5C270.9 372.4 286.8 363.5 300.7 349C304.4 345.2 367.8 287.5 369 282.3C369.2 281.6 369.3 279.2 367.8 277.9C366.3 276.6 364.2 277.1 362.7 277.4C360.5 277.9 325.6 300.9 258.1 346.5C248.2 353.3 239.2 356.6 231.2 356.4C222.3 356.2 205.3 351.4 192.6 347.3C177.1 342.3 164.7 339.6 165.8 331C166.4 326.5 172.5 322 184.2 317.3C256.5 285.8 304.7 265 328.8 255C397.7 226.4 412 221.4 421.3 221.2C423.4 221.2 427.9 221.7 430.9 224.1C432.9 225.8 434.1 228.2 434.4 230.8C434.9 234 435 237.3 434.8 240.6z" /></svg>
+                </Link>
+                </div>
+                
               </div>
             </div>
           </div>
-
-          <div className="border-t border-slate-800 mt-12 pt-8 text-center">
-            <p className="text-slate-400">© 2024 REALIELTSEXAM. All rights reserved. | Your success is our mission.</p>
-          </div>
         </div>
-      </footer>
+
+        <div className="border-t border-slate-800 mt-12 pt-8 text-center">
+          <p className="text-slate-400">© 2025 REALIELTSEXAM. All rights reserved. | Your success is our mission.</p>
+        </div>
     </div>
+      </footer >
+    </div >
   )
 }

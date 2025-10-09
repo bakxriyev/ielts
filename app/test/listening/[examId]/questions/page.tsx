@@ -113,7 +113,7 @@ export default function ListeningTestPage() {
   const fetchTestData = async () => {
     try {
       setIsLoading(true)
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
       const response = await fetch(`${API_BASE_URL}/listening/${examId}`)
 
       if (!response.ok) {
@@ -479,7 +479,7 @@ export default function ListeningTestPage() {
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
 
       const answersKey = `answers_${examId}_listening`
       const savedAnswers = localStorage.getItem(answersKey)
@@ -676,7 +676,7 @@ export default function ListeningTestPage() {
       {testData?.audio_url && (
         <audio
           ref={audioRef}
-          src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}${testData.audio_url}`}
+          src={`${process.env.NEXT_PUBLIC_API_URL}${testData.audio_url}`}
           onEnded={handleAudioEnded}
           onPlay={() => setAudioPlaying(true)}
           onPause={() => setAudioPlaying(false)}
@@ -977,7 +977,7 @@ export default function ListeningTestPage() {
                             )
                           })()}
                         </div>
-                        <p className="text-xs text-gray-500">Write NO MORE THAN THREE WORDS for each answer.</p>
+                     
                       </div>
                     )}
 
@@ -1087,7 +1087,6 @@ export default function ListeningTestPage() {
                           </div>
                         </div>
 
-                        <p className="text-xs text-gray-500">Choose the correct group for each item.</p>
                       </div>
                     )}
 
@@ -1183,7 +1182,6 @@ export default function ListeningTestPage() {
                             </tbody>
                           </table>
                         </div>
-                        <p className="text-xs text-gray-500">Write NO MORE THAN THREE WORDS for each answer.</p>
                       </div>
                     )}
 
@@ -1194,7 +1192,7 @@ export default function ListeningTestPage() {
                           <div className="lg:col-span-2">
                             <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
                               <img
-                                src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/uploads/l_questions/${question.photo}`}
+                                src={`${process.env.NEXT_PUBLIC_API_URL}/uploads/l_questions/${question.photo}`}
                                 alt="Map"
                                 className="w-full h-auto"
                                 draggable={false}
@@ -1306,7 +1304,6 @@ export default function ListeningTestPage() {
                             </div>
                           </div>
                         </div>
-                        <p className="text-xs text-gray-500">Drag the options to the correct positions on the map.</p>
                       </div>
                     )}
 
