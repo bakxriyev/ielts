@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useEffect, useState, useRef, use, useMemo } from "react"
+import { useEffect, useState, useRef, use, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "../../../../../components/ui/button"
 import { useAuth } from "../../../../../contexts/auth-context"
@@ -136,6 +136,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
   // Added state for mobile menu visibility
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+
+  const [highlights, setHighlights] = useState<Array<{ id: string; text: string; range: string }>>([])
+  const [showHighlightButton, setShowHighlightButton] = useState(false)
+  const [highlightButtonPosition, setHighlightButtonPosition] = useState({ x: 0, y: 0 })
+  const [selectedRange, setSelectedRange] = useState<Range | null>(null)
+  const [isHighlightedText, setIsHighlightedText] = useState(false)
+  const passageRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
@@ -792,6 +799,121 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       document.removeEventListener("mouseup", handleMouseUp)
     }
   }, [isResizing])
+
+  const handleTextSelection = useCallback(() => {
+    const selection = window.getSelection()
+    if (!selection || selection.isCollapsed || !passageRef.current) {
+      setShowHighlightButton(false)
+      return
+    }
+
+    const selectedText = selection.toString().trim()
+    if (selectedText.length === 0) {
+      setShowHighlightButton(false)
+      return
+    }
+
+    // Check if selection is within passage
+    const range = selection.getRangeAt(0)
+    if (!passageRef.current.contains(range.commonAncestorContainer)) {
+      setShowHighlightButton(false)
+      return
+    }
+
+    // Check if selected text is already highlighted
+    const parentElement = range.commonAncestorContainer.parentElement
+    const isHighlighted =
+      parentElement?.classList.contains("text-highlight") || parentElement?.closest(".text-highlight") !== null
+
+    setIsHighlightedText(isHighlighted)
+    setSelectedRange(range)
+
+    // Position button near selection
+    const rect = range.getBoundingClientRect()
+    setHighlightButtonPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top - 40,
+    })
+    setShowHighlightButton(true)
+  }, [])
+
+  const addHighlight = useCallback(() => {
+    if (!selectedRange) return
+
+    const selection = window.getSelection()
+    if (!selection) return
+
+    const range = selectedRange.cloneRange()
+    const span = document.createElement("span")
+    span.className = "text-highlight bg-yellow-400 text-white dark:bg-yellow-500 dark:text-white font-medium"
+    span.dataset.highlightId = `highlight-${Date.now()}`
+
+    try {
+      range.surroundContents(span)
+      setHighlights((prev) => [
+        ...prev,
+        {
+          id: span.dataset.highlightId!,
+          text: span.textContent || "",
+          range: range.toString(), // store the string representation of the range
+        },
+      ])
+    } catch (e) {
+      // If surroundContents fails (e.g., partial element selection), use extractContents
+      const contents = range.extractContents()
+      span.appendChild(contents)
+      range.insertNode(span)
+      setHighlights((prev) => [
+        ...prev,
+        {
+          id: span.dataset.highlightId!,
+          text: span.textContent || "",
+          range: span.textContent || "", // Fallback range representation
+        },
+      ])
+    }
+
+    selection.removeAllRanges()
+    setShowHighlightButton(false)
+    setSelectedRange(null)
+  }, [selectedRange, setHighlights]) // Include setHighlights in dependency array
+
+  const removeHighlight = useCallback(() => {
+    if (!selectedRange) return
+
+    const selection = window.getSelection()
+    if (!selection) return
+
+    // Find the highlight element
+    let element = selectedRange.commonAncestorContainer.parentElement
+    while (element && !element.classList.contains("text-highlight")) {
+      element = element.parentElement
+    }
+
+    if (element && element.classList.contains("text-highlight")) {
+      const highlightId = element.dataset.highlightId
+      const parent = element.parentNode
+      while (element.firstChild) {
+        parent?.insertBefore(element.firstChild, element)
+      }
+      parent?.removeChild(element)
+
+      setHighlights((prev) => prev.filter((h) => h.id !== highlightId))
+    }
+
+    selection.removeAllRanges()
+    setShowHighlightButton(false)
+    setSelectedRange(null)
+  }, [selectedRange, setHighlights]) // Include setHighlights in dependency array
+
+  useEffect(() => {
+    const handleMouseUp = () => {
+      setTimeout(handleTextSelection, 10) // Use a small timeout to allow selection to complete
+    }
+
+    document.addEventListener("mouseup", handleMouseUp)
+    return () => document.removeEventListener("mouseup", handleMouseUp)
+  }, [handleTextSelection])
 
   const getAvailableParts = (): number[] => {
     if (!testData?.questions) return []
@@ -2007,7 +2129,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   </p>
                 </div>
 
-                <div className="prose max-w-none">
+                <div className="prose max-w-none" ref={passageRef}>
                   {getCurrentPartPassages && getCurrentPartPassages.length > 0 ? (
                     getCurrentPartPassages.map((passage) => (
                       <div key={passage.id} className="mb-6">
@@ -2106,6 +2228,25 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           </div>
         </div>
       </div>
+
+      {showHighlightButton && (
+        <div
+          className="fixed z-50"
+          style={{
+            left: `${highlightButtonPosition.x}px`,
+            top: `${highlightButtonPosition.y}px`,
+            transform: "translateX(-50%)",
+          }}
+        >
+          <Button
+            onClick={isHighlightedText ? removeHighlight : addHighlight}
+            size="sm"
+            className={isHighlightedText ? "bg-red-500 hover:bg-red-600" : "bg-blue-500 hover:bg-blue-600"}
+          >
+            {isHighlightedText ? "Remove Highlight" : "Add Highlight"}
+          </Button>
+        </div>
+      )}
 
       {/* Bottom Navigation */}
       <div

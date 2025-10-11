@@ -1,12 +1,13 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
+import type { ReactElement } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Timer } from "@/components/timer"
 import { markSectionCompleted } from "../../../../../lib/test-strotage"
-import { Volume2, VolumeX, Check } from "lucide-react"
+import { Volume2, VolumeX } from "lucide-react"
 import { useCustomAlert } from "../../../../../components/custom-allert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Slider } from "@/components/ui/slider"
@@ -71,6 +72,8 @@ export default function ListeningTestPage() {
   const [audioPlaying, setAudioPlaying] = useState(false)
   const [volume, setVolume] = useState([70])
   const [timerExpired, setTimerExpired] = useState(false)
+  const [audioDuration, setAudioDuration] = useState<number>(0)
+  const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0)
 
   const getUserId = () => {
     try {
@@ -97,6 +100,29 @@ export default function ListeningTestPage() {
     setUserId(getUserId())
     fetchTestData()
   }, [examId])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const updateTime = () => {
+      setAudioCurrentTime(audio.currentTime)
+    }
+
+    const updateDuration = () => {
+      setAudioDuration(audio.duration)
+    }
+
+    audio.addEventListener("timeupdate", updateTime)
+    audio.addEventListener("loadedmetadata", updateDuration)
+    audio.addEventListener("durationchange", updateDuration)
+
+    return () => {
+      audio.removeEventListener("timeupdate", updateTime)
+      audio.removeEventListener("loadedmetadata", updateDuration)
+      audio.removeEventListener("durationchange", updateDuration)
+    }
+  }, [])
 
   const startAudioTest = () => {
     setShowAudioWarning(false)
@@ -181,6 +207,17 @@ export default function ListeningTestPage() {
         }
       }
       return 1
+    } else if (question.q_type === "FLOW_CHART") {
+      if (question.choices && typeof question.choices === "object") {
+        let blankCount = 0
+        Object.values(question.choices).forEach((text: any) => {
+          if (typeof text === "string" && text.includes("__")) {
+            blankCount++
+          }
+        })
+        return blankCount > 0 ? blankCount : 1
+      }
+      return 1
     } else if (question.q_type === "MATCHING_INFORMATION") {
       return question.rows?.length || 1
     } else {
@@ -218,9 +255,63 @@ export default function ListeningTestPage() {
     return counter
   }
 
+  const getFlowChartStepQuestionNumber = (questionId: string, stepNum: string): number => {
+    const baseQuestionId = questionId.split("_")[0]
+    const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+    if (!question || !question.choices) return 1
+
+    const allQuestions = getAllQuestions()
+    const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
+
+    let questionCounter = 1
+    for (let i = 0; i < baseQuestionIndex; i++) {
+      questionCounter += getQuestionCount(allQuestions[i])
+    }
+
+    // Count which blank this is within the flow chart
+    let blankCounter = 0
+    const sortedSteps = Object.entries(question.choices).sort(([a], [b]) => Number(a) - Number(b))
+
+    for (const [step, text] of sortedSteps) {
+      if (typeof text === "string" && text.includes("__")) {
+        if (step === stepNum) {
+          return questionCounter + blankCounter
+        }
+        blankCounter++
+      }
+    }
+
+    return questionCounter
+  }
+
   const handleAnswerChange = (questionId: number | string, answer: any, questionIdentifier?: string) => {
     const questionIdStr = questionId.toString()
-    const newAnswers = { ...answers, [questionIdStr]: answer }
+
+    let stateAnswer = answer
+    if (questionIdentifier && questionIdentifier.includes("_flow_")) {
+      const parts = questionIdentifier.split("_")
+      const stepNum = parts[2]
+      const existingAnswer = answers[questionIdStr]
+      if (answer) {
+        stateAnswer = { ...(typeof existingAnswer === "object" ? existingAnswer : {}), [stepNum]: answer }
+      } else {
+        const newAnswer = { ...(typeof existingAnswer === "object" ? existingAnswer : {}) }
+        delete newAnswer[stepNum]
+        stateAnswer = Object.keys(newAnswer).length > 0 ? newAnswer : null
+      }
+    }
+
+    const newAnswers = { ...answers }
+    if (
+      !answer ||
+      (typeof answer === "string" && answer.trim() === "") ||
+      (Array.isArray(answer) && answer.length === 0)
+    ) {
+      delete newAnswers[questionIdStr]
+    } else {
+      newAnswers[questionIdStr] = stateAnswer
+    }
     setAnswers(newAnswers)
 
     const answersKey = `answers_${examId}_listening`
@@ -240,7 +331,11 @@ export default function ListeningTestPage() {
     const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr.split("_")[0])
     const questionType = question?.q_type || "UNKNOWN"
 
-    if (answer && (typeof answer === "string" ? answer.trim() : Array.isArray(answer) ? answer.length > 0 : true)) {
+    const isEmptyAnswer =
+      !answer || (typeof answer === "string" && answer.trim() === "") || (Array.isArray(answer) && answer.length === 0)
+
+    if (!isEmptyAnswer) {
+      // Add/update answer
       const formattedAnswer = answer
 
       if (questionIdentifier && questionIdentifier.includes("_map_")) {
@@ -249,7 +344,6 @@ export default function ListeningTestPage() {
         const position = parts[2]
         const selectedOptionKey = answer
 
-        // Find the l_question record for this MAP question
         const mapQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
 
         if (!mapQuestion) {
@@ -257,19 +351,7 @@ export default function ListeningTestPage() {
           return
         }
 
-        // Use the actual l_question ID from the database (e.g., 14)
-        // This is the id field from the l_questions table
         const actualLQuestionId = mapQuestion.id
-
-        console.log("[v0] MAP_LABELING Debug:", {
-          questionIdentifier,
-          baseQuestionId,
-          position,
-          selectedOptionKey,
-          mapQuestionId: mapQuestion.id,
-          actualLQuestionId,
-          listening_questions_id: mapQuestion.listening_questions_id,
-        })
 
         // Remove any previous answer for this specific position
         answersArray = answersArray.filter(
@@ -282,27 +364,18 @@ export default function ListeningTestPage() {
           questionId: mapQuestion.listening_questions_id,
           examId: Number.parseInt(examId),
           question_type: questionType,
-          answer: `${position}:${selectedOptionKey}`, // Store as "1:A"
-          l_questionsID: actualLQuestionId, // This should be 14 from database
-        })
-
-        console.log("[v0] Saved MAP answer:", {
-          position,
-          selectedOptionKey,
-          l_questionsID: actualLQuestionId,
           answer: `${position}:${selectedOptionKey}`,
+          l_questionsID: actualLQuestionId,
         })
       } else if (questionIdStr.includes("_table_")) {
         const parts = questionIdStr.split("_")
         const baseQuestionId = parts[0]
         const rowIndex = Number.parseInt(parts[parts.length - 2])
         const cellIndex = Number.parseInt(parts[parts.length - 1])
-        const cellPosition = `${rowIndex}_${cellIndex}`
 
         const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
         const l_questionsID = question?.listening_questions_id
 
-        // Calculate the starting question number for this table
         const allQuestions = getAllQuestions()
         const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
 
@@ -311,7 +384,6 @@ export default function ListeningTestPage() {
           questionCounter += getQuestionCount(allQuestions[i])
         }
 
-        // Count which input this is within the table (0-indexed)
         let cellCounter = 0
         if (question?.rows && Array.isArray(question.rows)) {
           for (let r = 0; r < question.rows.length; r++) {
@@ -341,7 +413,7 @@ export default function ListeningTestPage() {
           questionId: l_questionsID,
           examId: Number.parseInt(examId),
           question_type: questionType,
-          answer: answer, // Store as simple string
+          answer: answer,
           l_questionsID: uniqueLQuestionsID,
         })
       } else if (questionIdStr.includes("_matching_")) {
@@ -352,7 +424,6 @@ export default function ListeningTestPage() {
         const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
         const l_questionsID = question?.listening_questions_id
 
-        // Calculate unique l_questionsID for this row
         const allQuestions = getAllQuestions()
         const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
 
@@ -393,6 +464,28 @@ export default function ListeningTestPage() {
             l_questionsID: Number.parseInt(questionIdStr) + index,
           })
         })
+      } else if (questionType === "FLOW_CHART" && questionIdentifier && questionIdentifier.includes("_flow_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const stepNum = parts[2]
+
+        const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        const l_questionsID = question?.listening_questions_id
+
+        // Remove previous answer for this step
+        answersArray = answersArray.filter(
+          (item: any) => !(item.questionId === l_questionsID && item.answer?.startsWith(`${stepNum}:`)),
+        )
+
+        // Add new answer
+        answersArray.push({
+          userId: String(userId),
+          questionId: l_questionsID,
+          examId: Number.parseInt(examId),
+          question_type: questionType,
+          answer: `${stepNum}:${answer}`,
+          l_questionsID: l_questionsID,
+        })
       } else {
         // Regular question
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
@@ -412,7 +505,6 @@ export default function ListeningTestPage() {
         })
       }
     } else {
-      // Handle deletion
       if (questionIdentifier && questionIdentifier.includes("_map_")) {
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
@@ -422,21 +514,86 @@ export default function ListeningTestPage() {
 
         if (mapQuestion) {
           const actualLQuestionId = mapQuestion.id
-          // Remove answer for this specific position
           answersArray = answersArray.filter(
             (item: any) => !(item.l_questionsID === actualLQuestionId && item.answer?.startsWith(`${position}:`)),
           )
         }
-      } else if (questionIdStr.includes("_table_") || questionIdStr.includes("_matching_")) {
-        // Handle table and matching deletions
+      } else if (questionIdStr.includes("_table_")) {
         const parts = questionIdStr.split("_")
         const baseQuestionId = parts[0]
+        const rowIndex = Number.parseInt(parts[parts.length - 2])
+        const cellIndex = Number.parseInt(parts[parts.length - 1])
 
         const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
-        const l_questionsID = question?.listening_questions_id
 
-        answersArray = answersArray.filter((item: any) => !(item.questionId === l_questionsID))
+        if (question) {
+          const allQuestions = getAllQuestions()
+          const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
+
+          let questionCounter = 1
+          for (let i = 0; i < baseQuestionIndex; i++) {
+            questionCounter += getQuestionCount(allQuestions[i])
+          }
+
+          let cellCounter = 0
+          if (question.rows && Array.isArray(question.rows)) {
+            for (let r = 0; r < question.rows.length; r++) {
+              const row = question.rows[r]
+              if (row.cells && Array.isArray(row.cells)) {
+                for (let c = 0; c < row.cells.length; c++) {
+                  if (row.cells[c] === "" || row.cells[c] === "_") {
+                    if (r === rowIndex && c === cellIndex) {
+                      break
+                    }
+                    cellCounter++
+                  }
+                }
+                if (r === rowIndex) break
+              }
+            }
+          }
+
+          const uniqueLQuestionsID = questionCounter + cellCounter
+          answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
+        }
+      } else if (questionIdStr.includes("_matching_")) {
+        const parts = questionIdStr.split("_")
+        const baseQuestionId = parts[0]
+        const rowIndex = Number.parseInt(parts[2])
+
+        const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+        if (question) {
+          const allQuestions = getAllQuestions()
+          const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
+
+          let questionCounter = 1
+          for (let i = 0; i < baseQuestionIndex; i++) {
+            questionCounter += getQuestionCount(allQuestions[i])
+          }
+
+          const uniqueLQuestionsID = questionCounter + rowIndex
+          answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
+        }
+      } else if (questionType === "FLOW_CHART" && questionIdentifier && questionIdentifier.includes("_flow_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const stepNum = parts[2]
+
+        const flowQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+        if (flowQuestion) {
+          const l_questionsID = flowQuestion.listening_questions_id
+          answersArray = answersArray.filter(
+            (item: any) => !(item.questionId === l_questionsID && item.answer?.startsWith(`${stepNum}:`)),
+          )
+        }
+      } else if (questionType === "MCQ_MULTI") {
+        const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
+        const l_questionsID = question?.listening_questions_id
+        answersArray = answersArray.filter((item: any) => item.questionId !== l_questionsID)
       } else {
+        // Regular question deletion
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
         const l_questionsID = question?.listening_questions_id
         answersArray = answersArray.filter(
@@ -444,14 +601,6 @@ export default function ListeningTestPage() {
         )
       }
     }
-
-    console.log("[v0] Saving to localStorage:", {
-      key: answersKey,
-      totalAnswers: answersArray.length,
-      currentQuestionId: questionIdStr,
-      l_questionsID: question?.id, // Changed from question?.listening_questions_id to question?.id based on the original code's intent for logging
-      questionType: questionType,
-    })
 
     localStorage.setItem(answersKey, JSON.stringify(answersArray))
   }
@@ -479,7 +628,7 @@ export default function ListeningTestPage() {
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
       const answersKey = `answers_${examId}_listening`
       const savedAnswers = localStorage.getItem(answersKey)
@@ -530,8 +679,17 @@ export default function ListeningTestPage() {
     return getAllQuestions().filter((q) => q.part === partName)
   }
 
-  const isQuestionAnswered = (questionId: number) => {
-    return answers[questionId] !== undefined && answers[questionId] !== ""
+  // Modified to check if any sub-question is answered, not just the main question object
+  const isQuestionAnswered = (question: any): boolean => {
+    const questionIdStr = question.id.toString()
+    const questionCount = getQuestionCount(question)
+
+    for (let i = 0; i < questionCount; i++) {
+      if (isSubQuestionAnswered(question, i)) {
+        return true
+      }
+    }
+    return false
   }
 
   const switchToPart = (partNumber: number) => {
@@ -564,7 +722,7 @@ export default function ListeningTestPage() {
 
   const handleTimerExpired = () => {
     setTimerExpired(true)
-    // Auto-submit without confirmation
+    // Auto-submit without confirmation when timer expires
     handleSubmit(true)
   }
 
@@ -583,7 +741,7 @@ export default function ListeningTestPage() {
         partNumber: partNum,
         questions: questions,
         totalQuestions: questions.length,
-        answeredQuestions: questions.filter((q) => isQuestionAnswered(q.id)).length,
+        answeredQuestions: questions.filter((q) => isQuestionAnswered(q)).length,
       }
     })
   }
@@ -622,6 +780,106 @@ export default function ListeningTestPage() {
     }
 
     return questionCounter
+  }
+
+  const formatAudioTimeRemaining = () => {
+    if (!audioDuration || audioDuration === 0 || isNaN(audioDuration)) {
+      return "Loading..."
+    }
+    const remaining = Math.max(0, audioDuration - audioCurrentTime)
+    const minutes = Math.floor(remaining / 60)
+    const seconds = Math.floor(remaining % 60)
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`
+  }
+
+  const isSubQuestionAnswered = (question: any, subIndex: number): boolean => {
+    const questionIdStr = question.id.toString()
+
+    if (question.q_type === "TABLE_COMPLETION") {
+      // Check if this specific table cell is answered
+      if (question.rows && Array.isArray(question.rows)) {
+        let cellCounter = 0
+        for (let r = 0; r < question.rows.length; r++) {
+          const row = question.rows[r]
+          if (row.cells && Array.isArray(row.cells)) {
+            for (let c = 0; c < row.cells.length; c++) {
+              if (row.cells[c] === "" || row.cells[c] === "_") {
+                if (cellCounter === subIndex) {
+                  const answer = answers[`${questionIdStr}_table_${r}_${c}`]
+                  return answer !== undefined && answer !== "" && answer !== null
+                }
+                cellCounter++
+              }
+            }
+          }
+        }
+      }
+      return false
+    } else if (question.q_type === "MATCHING_INFORMATION") {
+      // Check if this specific matching row is answered
+      const answer = answers[`${questionIdStr}_matching_${subIndex}`]
+      return answer !== undefined && answer !== "" && answer !== null
+    } else if (question.q_type === "MAP_LABELING") {
+      // Check if this specific map position is answered
+      if (question.rows) {
+        try {
+          let rowsData: any
+          if (typeof question.rows === "object") {
+            rowsData = question.rows
+          } else if (typeof question.rows === "string") {
+            const trimmed = question.rows.trim()
+            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+              rowsData = JSON.parse(trimmed)
+            } else {
+              return false
+            }
+          } else {
+            return false
+          }
+
+          const positions = Object.keys(rowsData)
+          if (subIndex < positions.length) {
+            const position = positions[subIndex]
+            const answer = answers[`${questionIdStr}_map_${position}`]
+            return answer !== undefined && answer !== "" && answer !== null
+          }
+        } catch (error) {
+          return false
+        }
+      }
+      return false
+    } else if (question.q_type === "FLOW_CHART") {
+      // Check if this specific flow chart step is answered
+      if (question.choices && typeof question.choices === "object") {
+        let blankCounter = 0
+        const sortedSteps = Object.entries(question.choices).sort(([a], [b]) => Number(a) - Number(b))
+
+        for (const [step, text] of sortedSteps) {
+          if (typeof text === "string" && text.includes("__")) {
+            if (blankCounter === subIndex) {
+              const allAnswers = answers[questionIdStr]
+              if (allAnswers && typeof allAnswers === "object" && allAnswers[step]) {
+                return true
+              }
+              return false
+            }
+            blankCounter++
+          }
+        }
+      }
+      return false
+    } else if (question.q_type === "MCQ_MULTI") {
+      // For MCQ_MULTI, check if we have enough answers
+      const answer = answers[questionIdStr]
+      if (Array.isArray(answer)) {
+        return answer.length > subIndex
+      }
+      return false
+    } else {
+      // For single-answer questions, all sub-indices share the same answer
+      const answer = answers[questionIdStr]
+      return answer !== undefined && answer !== "" && answer !== null
+    }
   }
 
   if (isLoading) {
@@ -687,11 +945,19 @@ export default function ListeningTestPage() {
       <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-4 sm:space-x-6">
-            <div className="text-red-600 font-bold text-xl sm:text-2xl">IELTS</div>
+            <div className="text-red-500 font-bold text-xl sm:text-2xl">IELTS</div>
             <div className="text-base sm:text-lg font-medium text-gray-800">Test taker ID</div>
           </div>
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-6 w-full sm:w-auto">
+            {audioPlaying && (
+              <div className="text-gray-900 text-sm sm:text-base flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-lg">
+                <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 animate-pulse" />
+                <span className="font-medium">Audio is playing</span>
+                <span className="text-gray-600">• {formatAudioTimeRemaining()} remaining</span>
+              </div>
+            )}
+
             {timeRemaining !== null && (
               <div className={`text-center ${timerActive ? "animate-pulse" : ""}`}>
                 <Timer
@@ -701,14 +967,6 @@ export default function ListeningTestPage() {
                   isActive={timerActive}
                   className="text-base sm:text-lg md:text-2xl font-mono font-bold bg-red-50 text-red-600 px-2 sm:px-4 py-1 sm:py-2 rounded border border-red-200"
                 />
-              </div>
-            )}
-
-            {audioPlaying && (
-              <div className="text-blue-600 text-sm sm:text-base flex items-center gap-2">
-                <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 animate-pulse" />
-                <span className="hidden sm:inline">Audio is playing</span>
-                <span className="sm:hidden">Playing</span>
               </div>
             )}
 
@@ -747,32 +1005,12 @@ export default function ListeningTestPage() {
               {(() => {
                 const currentPartData = testData?.questions.find((q) => q.part === `PART${currentPart}`)
                 return currentPartData ? (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <h4 className="font-semibold text-blue-900 mb-2">{currentPartData.title}</h4>
-                    <p className="text-blue-800">{currentPartData.instruction}</p>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    <h4 className="font-semibold text-gray-900 mb-2">{currentPartData.title}</h4>
+                    <p className="text-gray-800">{currentPartData.instruction}</p>
                   </div>
                 ) : null
               })()}
-
-              {audioPlaying && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <div className="flex items-center gap-2 text-blue-800">
-                    <Volume2 className="h-5 w-5 animate-pulse" />
-                    <span className="font-medium">Audio is currently playing</span>
-                  </div>
-                  <p className="text-blue-700 text-sm mt-1">Listen carefully and answer the questions below.</p>
-                </div>
-              )}
-
-              {audioEnded && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                  <div className="flex items-center gap-2 text-green-800">
-                    <Check className="h-5 w-5" />
-                    <span className="font-medium">Audio has finished</span>
-                  </div>
-                  <p className="text-green-700 text-sm mt-1">You now have time to complete your answers.</p>
-                </div>
-              )}
             </div>
           </div>
 
@@ -822,7 +1060,7 @@ export default function ListeningTestPage() {
 
                 return (
                   <div key={question.id} className="space-y-4 p-4 sm:p-6 border rounded-lg bg-white border-gray-200">
-                    <div className="text-base sm:text-lg font-semibold mb-4 text-blue-600">
+                    <div className="text-base sm:text-lg font-semibold mb-4 text-gray-700">
                       Question {getGlobalQuestionNumber(question.id)}
                       {getQuestionCount(question) > 1 &&
                         ` - ${getGlobalQuestionNumber(question.id) + getQuestionCount(question) - 1}`}
@@ -977,7 +1215,6 @@ export default function ListeningTestPage() {
                             )
                           })()}
                         </div>
-                     
                       </div>
                     )}
 
@@ -1086,7 +1323,6 @@ export default function ListeningTestPage() {
                             </table>
                           </div>
                         </div>
-
                       </div>
                     )}
 
@@ -1307,6 +1543,152 @@ export default function ListeningTestPage() {
                       </div>
                     )}
 
+                    {question.q_type === "FLOW_CHART" && question.choices && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                          {/* Flow Chart */}
+                          <div className="lg:col-span-2">
+                            <div className="space-y-3">
+                              {Object.entries(question.choices).map(([stepNum, stepText]: [string, any], index) => {
+                                const hasBlank = stepText.includes("__")
+                                const flowChartQuestionId = question.id.toString()
+                                const allAnswers = answers[flowChartQuestionId]
+                                const currentAnswer =
+                                  allAnswers && typeof allAnswers === "object" && allAnswers[stepNum]
+                                    ? allAnswers[stepNum]
+                                    : ""
+
+                                const stepQuestionNum = hasBlank
+                                  ? getFlowChartStepQuestionNumber(question.id.toString(), stepNum)
+                                  : null
+
+                                let selectedOptionText = currentAnswer
+                                if (currentAnswer && question.options && Array.isArray(question.options)) {
+                                  selectedOptionText = currentAnswer
+                                }
+
+                                return (
+                                  <React.Fragment key={stepNum}>
+                                    <div className="border-2 border-gray-300 rounded-lg p-4 bg-white">
+                                      {hasBlank ? (
+                                        <div className="text-base text-gray-900 leading-relaxed">
+                                          {stepText.split("__").map((part: string, partIndex: number) => (
+                                            <React.Fragment key={partIndex}>
+                                              {part}
+                                              {partIndex < stepText.split("__").length - 1 && (
+                                                <span
+                                                  className={`inline-flex items-center gap-2 min-w-[140px] px-3 py-2 mx-1 border-2 border-dashed rounded transition-all ${
+                                                    currentAnswer
+                                                      ? "bg-blue-50 border-blue-500 cursor-pointer hover:bg-red-50 hover:border-red-500"
+                                                      : "bg-gray-50 border-gray-400 hover:border-blue-400"
+                                                  }`}
+                                                  onDragOver={(e) => {
+                                                    e.preventDefault()
+                                                    e.currentTarget.classList.add("bg-blue-100", "scale-105")
+                                                  }}
+                                                  onDragLeave={(e) => {
+                                                    e.currentTarget.classList.remove("bg-blue-100", "scale-105")
+                                                  }}
+                                                  onDrop={(e) => {
+                                                    e.preventDefault()
+                                                    e.currentTarget.classList.remove("bg-blue-100", "scale-105")
+                                                    const optionKey = e.dataTransfer.getData("text/plain")
+                                                    if (optionKey) {
+                                                      const fullQuestionId = `${question.id}_flow_${stepNum}`
+                                                      handleAnswerChange(flowChartQuestionId, optionKey, fullQuestionId)
+                                                    }
+                                                  }}
+                                                  onClick={() => {
+                                                    if (currentAnswer) {
+                                                      const fullQuestionId = `${question.id}_flow_${stepNum}`
+                                                      handleAnswerChange(flowChartQuestionId, null, fullQuestionId)
+                                                    }
+                                                  }}
+                                                  title={currentAnswer ? "Click to remove" : "Drag option here"}
+                                                >
+                                                  <span className="bg-gray-700 text-white px-2 py-1 rounded text-xs font-medium flex-shrink-0">
+                                                    {stepQuestionNum}
+                                                  </span>
+                                                  {currentAnswer ? (
+                                                    <span className="font-semibold text-blue-700">
+                                                      {selectedOptionText}
+                                                    </span>
+                                                  ) : (
+                                                    <span className="text-gray-400 text-sm">Drop here</span>
+                                                  )}
+                                                </span>
+                                              )}
+                                            </React.Fragment>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="text-base text-gray-900 leading-relaxed">{stepText}</div>
+                                      )}
+                                    </div>
+                                    {index < Object.keys(question.choices).length - 1 && (
+                                      <div className="flex justify-center">
+                                        <div className="w-0.5 h-6 bg-gray-400"></div>
+                                        <div className="absolute w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-gray-400 mt-6"></div>
+                                      </div>
+                                    )}
+                                  </React.Fragment>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Options Panel */}
+                          <div className="lg:col-span-1">
+                            <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 sticky top-4">
+                              <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
+                              <div className="space-y-2">
+                                {question.options &&
+                                  Array.isArray(question.options) &&
+                                  question.options
+                                    .filter((optionKey: string) => {
+                                      const flowChartQuestionId = question.id.toString()
+                                      const allAnswers = answers[flowChartQuestionId]
+                                      if (!allAnswers || typeof allAnswers !== "object") return true
+
+                                      const isUsed = Object.values(allAnswers).includes(optionKey)
+                                      return !isUsed
+                                    })
+                                    .map((optionKey: string) => (
+                                      <div
+                                        key={optionKey}
+                                        draggable
+                                        onDragStart={(e) => {
+                                          e.dataTransfer.setData("text/plain", optionKey)
+                                          e.currentTarget.classList.add("opacity-50")
+                                        }}
+                                        onDragEnd={(e) => {
+                                          e.currentTarget.classList.remove("opacity-50")
+                                        }}
+                                        className="bg-white border-2 border-gray-300 rounded-lg p-3 cursor-move hover:border-blue-400 hover:shadow-md transition-all active:scale-95"
+                                      >
+                                        <div className="flex items-center justify-center">
+                                          <span className="text-gray-900 font-medium text-base">{optionKey}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                              </div>
+                              {question.options &&
+                                Array.isArray(question.options) &&
+                                question.options.filter((optionKey: string) => {
+                                  const flowChartQuestionId = question.id.toString()
+                                  const allAnswers = answers[flowChartQuestionId]
+                                  if (!allAnswers || typeof allAnswers !== "object") return true
+                                  const isUsed = Object.values(allAnswers).includes(optionKey)
+                                  return !isUsed
+                                }).length === 0 && (
+                                  <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
+                                )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {![
                       "TFNG",
                       "TRUE_FALSE_NOT_GIVEN",
@@ -1317,6 +1699,7 @@ export default function ListeningTestPage() {
                       "MATCHING_INFORMATION",
                       "TABLE_COMPLETION",
                       "MAP_LABELING",
+                      "FLOW_CHART",
                     ].includes(question.q_type || "") && (
                       <div className="space-y-2">
                         <Input
@@ -1357,8 +1740,33 @@ export default function ListeningTestPage() {
           <div className="flex items-center space-x-8 overflow-x-auto max-w-full">
             <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
               {allParts.map((part) => {
-                const allPartQuestionsAnswered =
-                  part.answeredQuestions === part.totalQuestions && part.totalQuestions > 0
+                // Calculate question range for this part
+                const partQuestions = getQuestionsByPart(part.partNumber)
+                let firstQuestionNum = 0
+                let lastQuestionNum = 0
+
+                if (partQuestions.length > 0) {
+                  firstQuestionNum = getGlobalQuestionNumber(partQuestions[0].id)
+                  lastQuestionNum = firstQuestionNum
+                  partQuestions.forEach((q) => {
+                    lastQuestionNum += getQuestionCount(q) - 1
+                  })
+                }
+
+                let totalSubQuestions = 0
+                let answeredSubQuestions = 0
+
+                partQuestions.forEach((q) => {
+                  const count = getQuestionCount(q)
+                  totalSubQuestions += count
+                  for (let i = 0; i < count; i++) {
+                    if (isSubQuestionAnswered(q, i)) {
+                      answeredSubQuestions++
+                    }
+                  }
+                })
+
+                const allPartQuestionsAnswered = answeredSubQuestions === totalSubQuestions && totalSubQuestions > 0
 
                 return (
                   <button
@@ -1368,56 +1776,71 @@ export default function ListeningTestPage() {
                       allPartQuestionsAnswered
                         ? "bg-green-500 text-white hover:bg-green-600"
                         : "bg-white text-gray-900 hover:bg-gray-50"
-                    } ${currentPart === part.partNumber ? "ring-2 ring-blue-600 ring-offset-1" : ""}`}
+                    } ${currentPart === part.partNumber ? "ring-2 ring-gray-600 ring-offset-1" : ""}`}
+                    title={`Questions ${firstQuestionNum}–${lastQuestionNum}`}
                   >
                     Part {part.partNumber}
+                    <span className="block text-[10px] text-gray-500">
+                      {firstQuestionNum}–{lastQuestionNum}
+                    </span>
                   </button>
                 )
               })}
             </div>
 
             <div className="flex items-center space-x-1 flex-wrap justify-center">
-              {allQuestions.map((question) => {
-                const questionNumber = getGlobalQuestionNumber(question.id)
-                const isAnswered = !!answers[question.id.toString()]
-                const isCurrentPart = question.part === `PART${currentPart}`
+              {(() => {
+                const questionButtons: ReactElement[] = []
+                let currentQuestionNum = 1
 
-                return (
-                  <button
-                    key={question.id}
-                    onClick={() => {
-                      // Switch to the correct part if needed
-                      const questionPart = Number.parseInt(question.part.replace("PART", ""))
-                      if (questionPart !== currentPart) {
-                        switchToPart(questionPart)
-                      }
-                      // Then jump to the question
-                      setTimeout(() => jumpToQuestion(question.id), 100)
-                    }}
-                    className={`w-6 h-6 sm:w-8 sm:h-8 text-xs font-medium rounded transition-all ${
-                      isAnswered
-                        ? "bg-green-500 text-white hover:bg-green-600"
-                        : isCurrentPart
-                          ? "bg-blue-500 text-white hover:bg-blue-600"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    } ${isCurrentPart ? "ring-2 ring-blue-600 ring-offset-1" : ""}`}
-                    title={`Question ${questionNumber} - ${question.part}`}
-                  >
-                    {questionNumber}
-                  </button>
-                )
-              })}
+                allQuestions.forEach((question) => {
+                  const questionCount = getQuestionCount(question)
+                  const isCurrentPart = question.part === `PART${currentPart}`
+
+                  for (let i = 0; i < questionCount; i++) {
+                    const questionNum = currentQuestionNum + i
+                    const isAnswered = isSubQuestionAnswered(question, i)
+
+                    questionButtons.push(
+                      <button
+                        key={`${question.id}_${i}`}
+                        onClick={() => {
+                          const questionPart = Number.parseInt(question.part.replace("PART", ""))
+                          if (questionPart !== currentPart) {
+                            switchToPart(questionPart)
+                          }
+                          setTimeout(() => jumpToQuestion(question.id), 100)
+                        }}
+                        className={`w-6 h-6 sm:w-8 sm:h-8 text-xs font-medium rounded transition-all ${
+                          isAnswered
+                            ? "bg-green-500 text-white hover:bg-green-600"
+                            : isCurrentPart
+                              ? "bg-gray-500 text-white hover:bg-gray-600"
+                              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        } ${isCurrentPart ? "ring-2 ring-gray-600 ring-offset-1" : ""}`}
+                        title={`Question ${questionNum} - ${question.part}${isAnswered ? " (Answered)" : ""}`}
+                      >
+                        {questionNum}
+                      </button>,
+                    )
+                  }
+
+                  currentQuestionNum += questionCount
+                })
+
+                return questionButtons
+              })()}
             </div>
           </div>
 
           <div>
-            <button
+            <Button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="px-4 sm:px-6 py-2 bg-gray-800 text-white rounded-lg text-sm sm:text-base font-medium hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="bg-black hover:bg-blue-700 text-white px-6 py-2 rounded-md shadow-md disabled:opacity-50"
             >
               {isSubmitting ? "Submitting..." : "Submit Test"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
