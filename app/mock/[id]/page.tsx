@@ -99,7 +99,7 @@ const MockTestPage = () => {
     const checkAuth = () => {
       const user = getStoredUser()
       if (!user) {
-        router.push("/login")
+        router.push("/join")
         return
       }
 
@@ -309,11 +309,11 @@ const MockTestPage = () => {
       <AlertComponent />
 
       <PasswordModal
-        isOpen={showPasswordModal && !isAuthenticated}
+        isOpen={!isAuthenticated}
         onClose={handlePasswordClose}
         onSuccess={handlePasswordSuccess}
-        correctPassword={examData?.password || "mock123"}
-        examTitle={examData?.title || "Mock Test"}
+        correctPassword={examData?.password }
+        examTitle={examData?.title }
       />
 
       <CompletionModal isOpen={showCompletionModal} onClose={() => setShowCompletionModal(false)} />
@@ -478,7 +478,7 @@ const MockTestPage = () => {
               <span className="text-blue-300 font-medium text-sm sm:text-base">REALIELTSEXAM</span>
             </div>
             <div className="text-xs sm:text-sm text-blue-400 text-center">
-              © 2024 REALIELTSEXAM. All rights reserved.
+              © 2025 REALIELTSEXAM. All rights reserved.
             </div>
           </div>
         </div>

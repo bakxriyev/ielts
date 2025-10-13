@@ -78,14 +78,7 @@ export function PasswordModal({ isOpen, onClose, onSuccess, correctPassword, exa
           </div>
 
           <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClose}
-              className="flex-1 border-blue-600 text-blue-300 hover:bg-blue-600 hover:text-white bg-transparent"
-            >
-              Cancel
-            </Button>
+            
             <Button
               type="submit"
               disabled={isLoading}
