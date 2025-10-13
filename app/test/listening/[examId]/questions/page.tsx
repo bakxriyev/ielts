@@ -93,7 +93,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     return "1" // fallback to "1" as string if no user data found
   }
 
-  const [userId, setUserId] = useState<string>("1")
+  const [userId, setUserId] = useState<string>("null")
 
   const { showAlert, AlertComponent } = useCustomAlert()
   const audioRef = useRef<HTMLAudioElement>(null)

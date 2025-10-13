@@ -144,6 +144,25 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   const [isHighlightedText, setIsHighlightedText] = useState(false)
   const passageRef = useRef<HTMLDivElement>(null)
 
+   const getUserId = () => {
+      try {
+        const userData = localStorage.getItem("user")
+        if (userData) {
+          const user = JSON.parse(userData)
+          return user.id ? String(user.id) : "null"
+        }
+      } catch (error) {
+        console.error("[v0] Error parsing user data from localStorage:", error)
+      }
+      return "1" // fallback to "1" as string if no user data found
+    }
+  
+    const [userId, setUserId] = useState<string>("null")
+
+    useEffect(() => {
+        setUserId(getUserId())
+      }, [examId])
+
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
     const handleOffline = () => setIsOnline(false)
@@ -751,7 +770,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         localStorage.removeItem(answersKey)
         setIsSubmitted(true)
         setIsCompleted(true)
-        router.push(`/results/${examId}`)
+        router.push(`/mock/${examId}`)
       } else {
         throw new Error("All submissions failed")
       }
@@ -1993,7 +2012,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-4">
             <div className="text-2xl font-bold text-red-600">IELTS</div>
-            <div className="text-base font-medium text-gray-700">Test taker ID</div>
+            <div className="text-base font-medium text-gray-700">Test taker ID : {userId}</div>
           </div>
 
           <div className="flex items-center gap-4">
