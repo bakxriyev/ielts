@@ -1368,9 +1368,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         <div className="text-center max-w-md mx-auto p-8">
           <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-4" />
           <h1 className={`text-2xl font-bold mb-4 ${colorStyles.text}`}>Test Not Found</h1>
-          <Link href={`/mock/${examId}`}>
-            <Button className="bg-blue-500 hover:bg-blue-600 text-white">Back to Mock Test</Button>
-          </Link>
+          
         </div>
       </div>
     )
@@ -1686,7 +1684,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                         return text
                       })()}
                     </div>
-                    <p className="text-xs text-gray-500">Write NO MORE THAN THREE WORDS for your answer.</p>
                   </div>
                 </div>
               )}
@@ -1806,7 +1803,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-xs text-gray-500">Write NO MORE THAN THREE WORDS for each answer.</p>
+                 
                 </div>
               )}
 
@@ -1825,7 +1822,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           <th
                             className={`border p-3 text-left font-semibold ${colorStyles.text} ${colorStyles.border}`}
                           >
-                            Statement
+                            
                           </th>
                           {Object.keys((question as any).choices).map((choiceKey) => (
                             <th
@@ -1935,7 +1932,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       {currentAnswer ? (
                         <span className={`font-medium ${colorStyles.text}`}>{currentAnswer}</span>
                       ) : (
-                        <span className="text-gray-400 text-xs">Drag an option here</span>
+                        <span className="text-gray-400 text-xs"></span>
                       )}
                     </div>
                   </div>
@@ -2122,7 +2119,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 <div className="mb-4">
                   <h2 className={`text-xl font-bold ${colorStyles.text} mb-2`}>Part {currentPart}</h2>
                   <p className={colorStyles.text}>
-                    Read the text and answer questions {(() => {
+                    {(() => {
                       const range = getPartQuestionRange(currentPart)
                       return `${range.start}–${range.end}`
                     })()}.
@@ -2197,10 +2194,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       <div className={`text-sm font-semibold mb-2 text-gray-500`}>
                         Questions {range.start === range.end ? range.start : `${range.start}–${range.end}`}
                       </div>
-                      <p className={`text-base ${colorStyles.text} mb-4`}>
-                        The text has four sections. Choose the correct heading for each section and move it into the
-                        gap.
-                      </p>
+                     
                     </div>
 
                     <h3 className={`text-lg font-bold ${colorStyles.text} mb-4`}>List of Headings</h3>

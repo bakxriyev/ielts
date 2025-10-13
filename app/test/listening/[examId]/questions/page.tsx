@@ -220,6 +220,14 @@ export default function ListeningTestPage() {
       return 1
     } else if (question.q_type === "MATCHING_INFORMATION") {
       return question.rows?.length || 1
+    } else if (question.q_type === "NOTE_COMPLETION") {
+      // Count underscores in the options text
+      if (question.options) {
+        const optionsText = typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+        const underscoreMatches = optionsText.match(/____+/g)
+        return underscoreMatches ? underscoreMatches.length : 1
+      }
+      return 1
     } else {
       return 1
     }
@@ -486,6 +494,37 @@ export default function ListeningTestPage() {
           answer: `${stepNum}:${answer}`,
           l_questionsID: l_questionsID,
         })
+      } else if (questionType === "NOTE_COMPLETION") {
+        const inputId = questionIdentifier || questionIdStr
+        const baseQuestionId = inputId.split("_")[0]
+        const subIndex = Number.parseInt(inputId.split("_")[2]) // Extract the index from the inputId
+
+        const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        const l_questionsID = question?.listening_questions_id
+
+        // Calculate the actual global question number for this input
+        const allQuestions = getAllQuestions()
+        const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
+
+        let questionCounter = 1
+        for (let i = 0; i < baseQuestionIndex; i++) {
+          questionCounter += getQuestionCount(allQuestions[i])
+        }
+
+        const actualQuestionNumber = questionCounter + subIndex
+
+        // Remove any previous answer for this specific question number
+        answersArray = answersArray.filter((item: any) => item.l_questionsID !== actualQuestionNumber)
+
+        // Add new answer with the actual question number
+        answersArray.push({
+          userId: String(userId),
+          questionId: l_questionsID,
+          examId: Number.parseInt(examId),
+          question_type: questionType,
+          answer: answer, // Save as plain text, not prefixed
+          l_questionsID: actualQuestionNumber, // Use the actual question number
+        })
       } else {
         // Regular question
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
@@ -587,6 +626,28 @@ export default function ListeningTestPage() {
           answersArray = answersArray.filter(
             (item: any) => !(item.questionId === l_questionsID && item.answer?.startsWith(`${stepNum}:`)),
           )
+        }
+      } else if (questionType === "NOTE_COMPLETION") {
+        const inputId = questionIdentifier || questionIdStr
+        const baseQuestionId = inputId.split("_")[0]
+        const subIndex = Number.parseInt(inputId.split("_")[2])
+
+        const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+        if (question) {
+          // Calculate the actual global question number for this input
+          const allQuestions = getAllQuestions()
+          const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
+
+          let questionCounter = 1
+          for (let i = 0; i < baseQuestionIndex; i++) {
+            questionCounter += getQuestionCount(allQuestions[i])
+          }
+
+          const actualQuestionNumber = questionCounter + subIndex
+
+          // Remove the specific answer for this question number
+          answersArray = answersArray.filter((item: any) => item.l_questionsID !== actualQuestionNumber)
         }
       } else if (questionType === "MCQ_MULTI") {
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
@@ -875,6 +936,25 @@ export default function ListeningTestPage() {
         return answer.length > subIndex
       }
       return false
+    } else if (question.q_type === "NOTE_COMPLETION") {
+      // Check if this specific note input is answered
+      // NOTE: This assumes that questionIdStr correctly maps to the base question and subIndex maps to the input position.
+      // We need to calculate the actual global question number to accurately check.
+      const allQuestions = getAllQuestions()
+      const baseQuestionIndex = allQuestions.findIndex((q) => q.id === question.id)
+      let questionCounter = 1
+      for (let i = 0; i < baseQuestionIndex; i++) {
+        questionCounter += getQuestionCount(allQuestions[i])
+      }
+      const actualQuestionNumber = questionCounter + subIndex
+      // Fetch answersArray from localStorage to check for NOTE_COMPLETION answers
+      const answersKey = `answers_${examId}_listening`
+      const savedAnswers = localStorage.getItem(answersKey)
+      const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
+      const answerEntry = answersArray.find(
+        (item: any) => item.l_questionsID === actualQuestionNumber && item.question_type === "NOTE_COMPLETION",
+      )
+      return answerEntry !== undefined && answerEntry.answer !== undefined && answerEntry.answer !== ""
     } else {
       // For single-answer questions, all sub-indices share the same answer
       const answer = answers[questionIdStr]
@@ -1066,7 +1146,7 @@ export default function ListeningTestPage() {
                         ` - ${getGlobalQuestionNumber(question.id) + getQuestionCount(question) - 1}`}
                     </div>
 
-                    {question.q_text && (
+                    {question.q_text && question.q_type !== "NOTE_COMPLETION" && (
                       <div className="text-base sm:text-lg mb-6 text-gray-900 font-medium leading-relaxed">
                         {question.q_text}
                       </div>
@@ -1689,6 +1769,72 @@ export default function ListeningTestPage() {
                       </div>
                     )}
 
+                    {question.q_type === "NOTE_COMPLETION" && question.options && (
+                      <div className="space-y-4">
+                        {/* Instruction text with HTML formatting */}
+                        {question.q_text && (
+                          <div
+                            className="text-base sm:text-lg mb-4 text-gray-900 font-medium leading-relaxed [&_b]:font-bold [&_strong]:font-bold"
+                            dangerouslySetInnerHTML={{ __html: question.q_text }}
+                          />
+                        )}
+
+                        {/* Note content box with border and visible text */}
+                        <div className="border-2 border-black rounded-lg p-6 bg-white">
+                          {(() => {
+                            const optionsText =
+                              typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+
+                            // Split by underscores (4 or more underscores)
+                            const parts = optionsText.split(/(____+)/)
+                            let inputCounter = 0
+                            const startQuestionNum = getGlobalQuestionNumber(question.id)
+
+                            return (
+                              <div
+                                className="text-gray-900 [&_b]:font-bold [&_strong]:font-bold [&_br]:block [&_br]:content-[''] [&_br]:block"
+                                style={{
+                                  lineHeight: "1.8",
+                                  fontSize: "16px",
+                                }}
+                              >
+                                {parts.map((part, index) => {
+                                  // If this part is underscores, replace with input
+                                  if (part.match(/^____+$/)) {
+                                    const currentInputIndex = inputCounter
+                                    inputCounter++
+                                    const questionNum = startQuestionNum + currentInputIndex
+                                    const inputId = `${question.id}_note_${currentInputIndex}`
+                                    const currentAnswer = answers[inputId] || ""
+
+                                    return (
+                                      <span key={index} className="inline-flex items-center mx-1">
+                                        <Input
+                                          value={currentAnswer}
+                                          onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
+                                          className="inline-block w-32 px-3 py-1.5 text-center text-sm bg-gray-50 border-2 border-gray-400 focus:border-blue-500 focus:bg-white placeholder:text-gray-500 placeholder:font-medium rounded"
+                                          placeholder={questionNum.toString()}
+                                        />
+                                      </span>
+                                    )
+                                  } else {
+                                    // Regular text with HTML formatting - ensure text is visible
+                                    return (
+                                      <span
+                                        key={index}
+                                        className="text-gray-900"
+                                        dangerouslySetInnerHTML={{ __html: part }}
+                                      />
+                                    )
+                                  }
+                                })}
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
                     {![
                       "TFNG",
                       "TRUE_FALSE_NOT_GIVEN",
@@ -1700,6 +1846,7 @@ export default function ListeningTestPage() {
                       "TABLE_COMPLETION",
                       "MAP_LABELING",
                       "FLOW_CHART",
+                      "NOTE_COMPLETION", // Add to exclusion list
                     ].includes(question.q_type || "") && (
                       <div className="space-y-2">
                         <Input
