@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import type { ReactElement } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Slider } from "@/components/ui/slider"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import React from "react" // Import React for Fragment
+import React, { type ReactElement } from "react" // Import React for Fragment
 
 interface LQuestion {
   id: number
@@ -74,6 +73,7 @@ export default function ListeningTestPage() {
   const [timerExpired, setTimerExpired] = useState(false)
   const [audioDuration, setAudioDuration] = useState<number>(0)
   const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0)
+  // </CHANGE>
 
   const getUserId = () => {
     try {
@@ -116,13 +116,16 @@ export default function ListeningTestPage() {
     audio.addEventListener("timeupdate", updateTime)
     audio.addEventListener("loadedmetadata", updateDuration)
     audio.addEventListener("durationchange", updateDuration)
+    // </CHANGE>
 
     return () => {
       audio.removeEventListener("timeupdate", updateTime)
       audio.removeEventListener("loadedmetadata", updateDuration)
       audio.removeEventListener("durationchange", updateDuration)
+      // </CHANGE>
     }
   }, [])
+  // </CHANGE>
 
   const startAudioTest = () => {
     setShowAudioWarning(false)
@@ -188,7 +191,6 @@ export default function ListeningTestPage() {
           if (typeof question.rows === "object") {
             rowsData = question.rows
           } else if (typeof question.rows === "string") {
-            // Check if string looks like valid JSON before parsing
             const trimmed = question.rows.trim()
             if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
               rowsData = JSON.parse(trimmed)
@@ -221,7 +223,6 @@ export default function ListeningTestPage() {
     } else if (question.q_type === "MATCHING_INFORMATION") {
       return question.rows?.length || 1
     } else if (question.q_type === "NOTE_COMPLETION") {
-      // Count underscores in the options text
       if (question.options) {
         const optionsText = typeof question.options === "string" ? question.options : JSON.stringify(question.options)
         const underscoreMatches = optionsText.match(/____+/g)
@@ -343,7 +344,6 @@ export default function ListeningTestPage() {
       !answer || (typeof answer === "string" && answer.trim() === "") || (Array.isArray(answer) && answer.length === 0)
 
     if (!isEmptyAnswer) {
-      // Add/update answer
       const formattedAnswer = answer
 
       if (questionIdentifier && questionIdentifier.includes("_map_")) {
@@ -361,12 +361,10 @@ export default function ListeningTestPage() {
 
         const actualLQuestionId = mapQuestion.id
 
-        // Remove any previous answer for this specific position
         answersArray = answersArray.filter(
           (item: any) => !(item.l_questionsID === actualLQuestionId && item.answer?.startsWith(`${position}:`)),
         )
 
-        // Add new answer with the actual database ID
         answersArray.push({
           userId: String(userId),
           questionId: mapQuestion.listening_questions_id,
@@ -412,10 +410,8 @@ export default function ListeningTestPage() {
 
         const uniqueLQuestionsID = questionCounter + cellCounter
 
-        // Remove previous answer for this cell
         answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
 
-        // Add new answer
         answersArray.push({
           userId: String(userId),
           questionId: l_questionsID,
@@ -442,10 +438,8 @@ export default function ListeningTestPage() {
 
         const uniqueLQuestionsID = questionCounter + rowIndex
 
-        // Remove previous answer for this row
         answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
 
-        // Add new answer
         answersArray.push({
           userId: String(userId),
           questionId: l_questionsID,
@@ -458,10 +452,8 @@ export default function ListeningTestPage() {
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
         const l_questionsID = question?.listening_questions_id
 
-        // Remove all previous answers for this question
         answersArray = answersArray.filter((item: any) => item.questionId !== l_questionsID)
 
-        // Add each selected option as a separate entry
         answer.forEach((selectedOption, index) => {
           answersArray.push({
             userId: String(userId),
@@ -480,12 +472,10 @@ export default function ListeningTestPage() {
         const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
         const l_questionsID = question?.listening_questions_id
 
-        // Remove previous answer for this step
         answersArray = answersArray.filter(
           (item: any) => !(item.questionId === l_questionsID && item.answer?.startsWith(`${stepNum}:`)),
         )
 
-        // Add new answer
         answersArray.push({
           userId: String(userId),
           questionId: l_questionsID,
@@ -494,15 +484,14 @@ export default function ListeningTestPage() {
           answer: `${stepNum}:${answer}`,
           l_questionsID: l_questionsID,
         })
-      } else if (questionType === "NOTE_COMPLETION") {
-        const inputId = questionIdentifier || questionIdStr
-        const baseQuestionId = inputId.split("_")[0]
-        const subIndex = Number.parseInt(inputId.split("_")[2]) // Extract the index from the inputId
+      } else if (questionType === "NOTE_COMPLETION" && questionIdentifier && questionIdentifier.includes("_note_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const inputIndex = Number.parseInt(parts[2])
 
         const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
         const l_questionsID = question?.listening_questions_id
 
-        // Calculate the actual global question number for this input
         const allQuestions = getAllQuestions()
         const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
 
@@ -511,22 +500,19 @@ export default function ListeningTestPage() {
           questionCounter += getQuestionCount(allQuestions[i])
         }
 
-        const actualQuestionNumber = questionCounter + subIndex
+        const actualQuestionNumber = questionCounter + inputIndex
 
-        // Remove any previous answer for this specific question number
         answersArray = answersArray.filter((item: any) => item.l_questionsID !== actualQuestionNumber)
 
-        // Add new answer with the actual question number
         answersArray.push({
           userId: String(userId),
           questionId: l_questionsID,
           examId: Number.parseInt(examId),
           question_type: questionType,
-          answer: answer, // Save as plain text, not prefixed
-          l_questionsID: actualQuestionNumber, // Use the actual question number
+          answer: { [(inputIndex + 1).toString()]: answer },
+          l_questionsID: actualQuestionNumber,
         })
       } else {
-        // Regular question
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
         const l_questionsID = question?.listening_questions_id
 
@@ -627,15 +613,14 @@ export default function ListeningTestPage() {
             (item: any) => !(item.questionId === l_questionsID && item.answer?.startsWith(`${stepNum}:`)),
           )
         }
-      } else if (questionType === "NOTE_COMPLETION") {
-        const inputId = questionIdentifier || questionIdStr
-        const baseQuestionId = inputId.split("_")[0]
-        const subIndex = Number.parseInt(inputId.split("_")[2])
+      } else if (questionType === "NOTE_COMPLETION" && questionIdentifier && questionIdentifier.includes("_note_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const inputIndex = Number.parseInt(parts[2])
 
         const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
 
         if (question) {
-          // Calculate the actual global question number for this input
           const allQuestions = getAllQuestions()
           const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
 
@@ -644,9 +629,7 @@ export default function ListeningTestPage() {
             questionCounter += getQuestionCount(allQuestions[i])
           }
 
-          const actualQuestionNumber = questionCounter + subIndex
-
-          // Remove the specific answer for this question number
+          const actualQuestionNumber = questionCounter + inputIndex
           answersArray = answersArray.filter((item: any) => item.l_questionsID !== actualQuestionNumber)
         }
       } else if (questionType === "MCQ_MULTI") {
@@ -654,7 +637,6 @@ export default function ListeningTestPage() {
         const l_questionsID = question?.listening_questions_id
         answersArray = answersArray.filter((item: any) => item.questionId !== l_questionsID)
       } else {
-        // Regular question deletion
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
         const l_questionsID = question?.listening_questions_id
         answersArray = answersArray.filter(
@@ -740,7 +722,6 @@ export default function ListeningTestPage() {
     return getAllQuestions().filter((q) => q.part === partName)
   }
 
-  // Modified to check if any sub-question is answered, not just the main question object
   const isQuestionAnswered = (question: any): boolean => {
     const questionIdStr = question.id.toString()
     const questionCount = getQuestionCount(question)
@@ -751,6 +732,107 @@ export default function ListeningTestPage() {
       }
     }
     return false
+  }
+
+  const isSubQuestionAnswered = (question: any, subIndex: number): boolean => {
+    const questionIdStr = question.id.toString()
+
+    if (question.q_type === "TABLE_COMPLETION") {
+      if (question.rows && Array.isArray(question.rows)) {
+        let cellCounter = 0
+        for (let r = 0; r < question.rows.length; r++) {
+          const row = question.rows[r]
+          if (row.cells && Array.isArray(row.cells)) {
+            for (let c = 0; c < row.cells.length; c++) {
+              if (row.cells[c] === "" || row.cells[c] === "_") {
+                if (cellCounter === subIndex) {
+                  const answer = answers[`${questionIdStr}_table_${r}_${c}`]
+                  return answer !== undefined && answer !== "" && answer !== null
+                }
+                cellCounter++
+              }
+            }
+          }
+        }
+      }
+      return false
+    } else if (question.q_type === "MATCHING_INFORMATION") {
+      const answer = answers[`${questionIdStr}_matching_${subIndex}`]
+      return answer !== undefined && answer !== "" && answer !== null
+    } else if (question.q_type === "MAP_LABELING") {
+      if (question.rows) {
+        try {
+          let rowsData: any
+          if (typeof question.rows === "object") {
+            rowsData = question.rows
+          } else if (typeof question.rows === "string") {
+            const trimmed = question.rows.trim()
+            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+              rowsData = JSON.parse(trimmed)
+            } else {
+              return false
+            }
+          } else {
+            return false
+          }
+
+          const positions = Object.keys(rowsData)
+          if (subIndex < positions.length) {
+            const position = positions[subIndex]
+            const answer = answers[`${questionIdStr}_map_${position}`]
+            return answer !== undefined && answer !== "" && answer !== null
+          }
+        } catch (error) {
+          return false
+        }
+      }
+      return false
+    } else if (question.q_type === "FLOW_CHART") {
+      if (question.choices && typeof question.choices === "object") {
+        let blankCounter = 0
+        const sortedSteps = Object.entries(question.choices).sort(([a], [b]) => Number(a) - Number(b))
+
+        for (const [step, text] of sortedSteps) {
+          if (typeof text === "string" && text.includes("__")) {
+            if (blankCounter === subIndex) {
+              const allAnswers = answers[questionIdStr]
+              if (allAnswers && typeof allAnswers === "object" && allAnswers[step]) {
+                return true
+              }
+              return false
+            }
+            blankCounter++
+          }
+        }
+      }
+      return false
+    } else if (question.q_type === "MCQ_MULTI") {
+      const answer = answers[questionIdStr]
+      if (Array.isArray(answer)) {
+        return answer.length > subIndex
+      }
+      return false
+    } else if (question.q_type === "NOTE_COMPLETION") {
+      const answersKey = `answers_${examId}_listening`
+      const savedAnswers = localStorage.getItem(answersKey)
+      const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
+
+      const allQuestions = getAllQuestions()
+      const baseQuestionIndex = allQuestions.findIndex((q) => q.id === question.id)
+      let questionCounter = 1
+      for (let i = 0; i < baseQuestionIndex; i++) {
+        questionCounter += getQuestionCount(allQuestions[i])
+      }
+      const actualQuestionNumber = questionCounter + subIndex
+
+      const answerEntry = answersArray.find(
+        (item: any) => item.l_questionsID === actualQuestionNumber && item.question_type === "NOTE_COMPLETION",
+      )
+      return answerEntry !== undefined && answerEntry.answer !== undefined && answerEntry.answer !== ""
+    } else {
+      const answer = answers[questionIdStr]
+      return answer !== undefined && answer !== "" && answer !== null
+    }
   }
 
   const switchToPart = (partNumber: number) => {
@@ -783,7 +865,7 @@ export default function ListeningTestPage() {
 
   const handleTimerExpired = () => {
     setTimerExpired(true)
-    // Auto-submit without confirmation when timer expires
+    // Auto-submit without confirmation
     handleSubmit(true)
   }
 
@@ -844,123 +926,14 @@ export default function ListeningTestPage() {
   }
 
   const formatAudioTimeRemaining = () => {
-    if (!audioDuration || audioDuration === 0 || isNaN(audioDuration)) {
-      return "Loading..."
-    }
+    if (!audioDuration || audioDuration === 0) return "0:00"
+    // </CHANGE>
     const remaining = Math.max(0, audioDuration - audioCurrentTime)
     const minutes = Math.floor(remaining / 60)
     const seconds = Math.floor(remaining % 60)
     return `${minutes}:${seconds.toString().padStart(2, "0")}`
   }
-
-  const isSubQuestionAnswered = (question: any, subIndex: number): boolean => {
-    const questionIdStr = question.id.toString()
-
-    if (question.q_type === "TABLE_COMPLETION") {
-      // Check if this specific table cell is answered
-      if (question.rows && Array.isArray(question.rows)) {
-        let cellCounter = 0
-        for (let r = 0; r < question.rows.length; r++) {
-          const row = question.rows[r]
-          if (row.cells && Array.isArray(row.cells)) {
-            for (let c = 0; c < row.cells.length; c++) {
-              if (row.cells[c] === "" || row.cells[c] === "_") {
-                if (cellCounter === subIndex) {
-                  const answer = answers[`${questionIdStr}_table_${r}_${c}`]
-                  return answer !== undefined && answer !== "" && answer !== null
-                }
-                cellCounter++
-              }
-            }
-          }
-        }
-      }
-      return false
-    } else if (question.q_type === "MATCHING_INFORMATION") {
-      // Check if this specific matching row is answered
-      const answer = answers[`${questionIdStr}_matching_${subIndex}`]
-      return answer !== undefined && answer !== "" && answer !== null
-    } else if (question.q_type === "MAP_LABELING") {
-      // Check if this specific map position is answered
-      if (question.rows) {
-        try {
-          let rowsData: any
-          if (typeof question.rows === "object") {
-            rowsData = question.rows
-          } else if (typeof question.rows === "string") {
-            const trimmed = question.rows.trim()
-            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-              rowsData = JSON.parse(trimmed)
-            } else {
-              return false
-            }
-          } else {
-            return false
-          }
-
-          const positions = Object.keys(rowsData)
-          if (subIndex < positions.length) {
-            const position = positions[subIndex]
-            const answer = answers[`${questionIdStr}_map_${position}`]
-            return answer !== undefined && answer !== "" && answer !== null
-          }
-        } catch (error) {
-          return false
-        }
-      }
-      return false
-    } else if (question.q_type === "FLOW_CHART") {
-      // Check if this specific flow chart step is answered
-      if (question.choices && typeof question.choices === "object") {
-        let blankCounter = 0
-        const sortedSteps = Object.entries(question.choices).sort(([a], [b]) => Number(a) - Number(b))
-
-        for (const [step, text] of sortedSteps) {
-          if (typeof text === "string" && text.includes("__")) {
-            if (blankCounter === subIndex) {
-              const allAnswers = answers[questionIdStr]
-              if (allAnswers && typeof allAnswers === "object" && allAnswers[step]) {
-                return true
-              }
-              return false
-            }
-            blankCounter++
-          }
-        }
-      }
-      return false
-    } else if (question.q_type === "MCQ_MULTI") {
-      // For MCQ_MULTI, check if we have enough answers
-      const answer = answers[questionIdStr]
-      if (Array.isArray(answer)) {
-        return answer.length > subIndex
-      }
-      return false
-    } else if (question.q_type === "NOTE_COMPLETION") {
-      // Check if this specific note input is answered
-      // NOTE: This assumes that questionIdStr correctly maps to the base question and subIndex maps to the input position.
-      // We need to calculate the actual global question number to accurately check.
-      const allQuestions = getAllQuestions()
-      const baseQuestionIndex = allQuestions.findIndex((q) => q.id === question.id)
-      let questionCounter = 1
-      for (let i = 0; i < baseQuestionIndex; i++) {
-        questionCounter += getQuestionCount(allQuestions[i])
-      }
-      const actualQuestionNumber = questionCounter + subIndex
-      // Fetch answersArray from localStorage to check for NOTE_COMPLETION answers
-      const answersKey = `answers_${examId}_listening`
-      const savedAnswers = localStorage.getItem(answersKey)
-      const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
-      const answerEntry = answersArray.find(
-        (item: any) => item.l_questionsID === actualQuestionNumber && item.question_type === "NOTE_COMPLETION",
-      )
-      return answerEntry !== undefined && answerEntry.answer !== undefined && answerEntry.answer !== ""
-    } else {
-      // For single-answer questions, all sub-indices share the same answer
-      const answer = answers[questionIdStr]
-      return answer !== undefined && answer !== "" && answer !== null
-    }
-  }
+  // </CHANGE>
 
   if (isLoading) {
     return (
@@ -1022,22 +995,21 @@ export default function ListeningTestPage() {
         />
       )}
 
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
+      <div className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-4 sm:space-x-6">
-            <div className="text-red-500 font-bold text-xl sm:text-2xl">IELTS</div>
+            <div className="text-gray-900 font-bold text-xl sm:text-2xl">IELTS</div>
             <div className="text-base sm:text-lg font-medium text-gray-800">Test taker ID</div>
+            {audioPlaying && (
+              <div className="text-gray-900 text-sm sm:text-base flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-lg">
+                <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 animate-pulse text-gray-600" />
+                <span className="font-medium">Audio playing</span>
+                <span className="text-gray-600">• {formatAudioTimeRemaining()} left</span>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-6 w-full sm:w-auto">
-            {audioPlaying && (
-              <div className="text-gray-900 text-sm sm:text-base flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-lg">
-                <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 animate-pulse" />
-                <span className="font-medium">Audio is playing</span>
-                <span className="text-gray-600">• {formatAudioTimeRemaining()} remaining</span>
-              </div>
-            )}
-
             {timeRemaining !== null && (
               <div className={`text-center ${timerActive ? "animate-pulse" : ""}`}>
                 <Timer
@@ -1059,6 +1031,7 @@ export default function ListeningTestPage() {
           </div>
         </div>
       </div>
+      {/* </CHANGE> */}
 
       <div className="flex-1 pb-24">
         <div className="max-w-4xl lg:max-w-6xl mx-auto p-4 sm:p-6">
@@ -1091,6 +1064,8 @@ export default function ListeningTestPage() {
                   </div>
                 ) : null
               })()}
+
+              {/* </CHANGE> */}
             </div>
           </div>
 
@@ -1145,8 +1120,9 @@ export default function ListeningTestPage() {
                       {getQuestionCount(question) > 1 &&
                         ` - ${getGlobalQuestionNumber(question.id) + getQuestionCount(question) - 1}`}
                     </div>
+                    {/* </CHANGE> */}
 
-                    {question.q_text && question.q_type !== "NOTE_COMPLETION" && (
+                    {question.q_text && (
                       <div className="text-base sm:text-lg mb-6 text-gray-900 font-medium leading-relaxed">
                         {question.q_text}
                       </div>
@@ -1637,6 +1613,7 @@ export default function ListeningTestPage() {
                                   allAnswers && typeof allAnswers === "object" && allAnswers[stepNum]
                                     ? allAnswers[stepNum]
                                     : ""
+                                // </CHANGE>
 
                                 const stepQuestionNum = hasBlank
                                   ? getFlowChartStepQuestionNumber(question.id.toString(), stepNum)
@@ -1646,6 +1623,7 @@ export default function ListeningTestPage() {
                                 if (currentAnswer && question.options && Array.isArray(question.options)) {
                                   selectedOptionText = currentAnswer
                                 }
+                                // </CHANGE>
 
                                 return (
                                   <React.Fragment key={stepNum}>
@@ -1676,12 +1654,14 @@ export default function ListeningTestPage() {
                                                     if (optionKey) {
                                                       const fullQuestionId = `${question.id}_flow_${stepNum}`
                                                       handleAnswerChange(flowChartQuestionId, optionKey, fullQuestionId)
+                                                      // </CHANGE>
                                                     }
                                                   }}
                                                   onClick={() => {
                                                     if (currentAnswer) {
                                                       const fullQuestionId = `${question.id}_flow_${stepNum}`
                                                       handleAnswerChange(flowChartQuestionId, null, fullQuestionId)
+                                                      // </CHANGE>
                                                     }
                                                   }}
                                                   title={currentAnswer ? "Click to remove" : "Drag option here"}
@@ -1732,6 +1712,7 @@ export default function ListeningTestPage() {
 
                                       const isUsed = Object.values(allAnswers).includes(optionKey)
                                       return !isUsed
+                                      // </CHANGE>
                                     })
                                     .map((optionKey: string) => (
                                       <div
@@ -1763,6 +1744,7 @@ export default function ListeningTestPage() {
                                 }).length === 0 && (
                                   <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
                                 )}
+                              {/* </CHANGE> */}
                             </div>
                           </div>
                         </div>
@@ -1771,35 +1753,25 @@ export default function ListeningTestPage() {
 
                     {question.q_type === "NOTE_COMPLETION" && question.options && (
                       <div className="space-y-4">
-                        {/* Instruction text with HTML formatting */}
                         {question.q_text && (
                           <div
-                            className="text-base sm:text-lg mb-4 text-gray-900 font-medium leading-relaxed [&_b]:font-bold [&_strong]:font-bold"
+                            className="text-base sm:text-lg mb-4 text-gray-900 font-medium leading-relaxed"
                             dangerouslySetInnerHTML={{ __html: question.q_text }}
                           />
                         )}
 
-                        {/* Note content box with border and visible text */}
-                        <div className="border-2 border-black rounded-lg p-6 bg-white">
+                        <div className="border-2 border-gray-900 rounded-lg p-6 bg-white">
                           {(() => {
                             const optionsText =
                               typeof question.options === "string" ? question.options : JSON.stringify(question.options)
 
-                            // Split by underscores (4 or more underscores)
                             const parts = optionsText.split(/(____+)/)
                             let inputCounter = 0
                             const startQuestionNum = getGlobalQuestionNumber(question.id)
 
                             return (
-                              <div
-                                className="text-gray-900 [&_b]:font-bold [&_strong]:font-bold [&_br]:block [&_br]:content-[''] [&_br]:block"
-                                style={{
-                                  lineHeight: "1.8",
-                                  fontSize: "16px",
-                                }}
-                              >
+                              <div className="text-gray-900 leading-relaxed" style={{ fontSize: "16px" }}>
                                 {parts.map((part, index) => {
-                                  // If this part is underscores, replace with input
                                   if (part.match(/^____+$/)) {
                                     const currentInputIndex = inputCounter
                                     inputCounter++
@@ -1812,13 +1784,12 @@ export default function ListeningTestPage() {
                                         <Input
                                           value={currentAnswer}
                                           onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
-                                          className="inline-block w-32 px-3 py-1.5 text-center text-sm bg-gray-50 border-2 border-gray-400 focus:border-blue-500 focus:bg-white placeholder:text-gray-500 placeholder:font-medium rounded"
+                                          className="inline-block w-32 px-3 py-1.5 text-center text-sm bg-gray-50 border-2 border-gray-400 focus:border-gray-600 focus:bg-white rounded"
                                           placeholder={questionNum.toString()}
                                         />
                                       </span>
                                     )
                                   } else {
-                                    // Regular text with HTML formatting - ensure text is visible
                                     return (
                                       <span
                                         key={index}
@@ -1846,13 +1817,13 @@ export default function ListeningTestPage() {
                       "TABLE_COMPLETION",
                       "MAP_LABELING",
                       "FLOW_CHART",
-                      "NOTE_COMPLETION", // Add to exclusion list
+                      "NOTE_COMPLETION",
                     ].includes(question.q_type || "") && (
                       <div className="space-y-2">
                         <Input
                           value={currentAnswer || ""}
                           onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                          className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-blue-500"
+                          className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
                           placeholder="Answer"
                         />
                       </div>
@@ -1887,7 +1858,6 @@ export default function ListeningTestPage() {
           <div className="flex items-center space-x-8 overflow-x-auto max-w-full">
             <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
               {allParts.map((part) => {
-                // Calculate question range for this part
                 const partQuestions = getQuestionsByPart(part.partNumber)
                 let firstQuestionNum = 0
                 let lastQuestionNum = 0
@@ -1900,20 +1870,8 @@ export default function ListeningTestPage() {
                   })
                 }
 
-                let totalSubQuestions = 0
-                let answeredSubQuestions = 0
-
-                partQuestions.forEach((q) => {
-                  const count = getQuestionCount(q)
-                  totalSubQuestions += count
-                  for (let i = 0; i < count; i++) {
-                    if (isSubQuestionAnswered(q, i)) {
-                      answeredSubQuestions++
-                    }
-                  }
-                })
-
-                const allPartQuestionsAnswered = answeredSubQuestions === totalSubQuestions && totalSubQuestions > 0
+                const allPartQuestionsAnswered =
+                  part.answeredQuestions === part.totalQuestions && part.totalQuestions > 0
 
                 return (
                   <button
@@ -1932,6 +1890,7 @@ export default function ListeningTestPage() {
                     </span>
                   </button>
                 )
+                // </CHANGE>
               })}
             </div>
 
@@ -1944,9 +1903,10 @@ export default function ListeningTestPage() {
                   const questionCount = getQuestionCount(question)
                   const isCurrentPart = question.part === `PART${currentPart}`
 
+                  // For questions with multiple sub-questions (like FLOW_CHART, TABLE, etc.)
                   for (let i = 0; i < questionCount; i++) {
                     const questionNum = currentQuestionNum + i
-                    const isAnswered = isSubQuestionAnswered(question, i)
+                    const isAnswered = !!answers[question.id.toString()]
 
                     questionButtons.push(
                       <button
@@ -1965,7 +1925,7 @@ export default function ListeningTestPage() {
                               ? "bg-gray-500 text-white hover:bg-gray-600"
                               : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                         } ${isCurrentPart ? "ring-2 ring-gray-600 ring-offset-1" : ""}`}
-                        title={`Question ${questionNum} - ${question.part}${isAnswered ? " (Answered)" : ""}`}
+                        title={`Question ${questionNum} - ${question.part}`}
                       >
                         {questionNum}
                       </button>,
@@ -1976,21 +1936,23 @@ export default function ListeningTestPage() {
                 })
 
                 return questionButtons
+                // </CHANGE>
               })()}
             </div>
           </div>
 
           <div>
-            <Button
+            <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="bg-black hover:bg-blue-700 text-white px-6 py-2 rounded-md shadow-md disabled:opacity-50"
+              className="px-4 sm:px-6 py-2 bg-gray-800 text-white rounded-lg text-sm sm:text-base font-medium hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isSubmitting ? "Submitting..." : "Submit Test"}
-            </Button>
+            </button>
           </div>
         </div>
       </div>
+      {/* </CHANGE> */}
     </div>
   )
 }
