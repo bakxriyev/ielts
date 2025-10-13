@@ -1,18 +1,18 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import React from "react"
+
+import { useEffect, useState, useRef, type ReactElement } from "react" // Import React for Fragment
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Timer } from "@/components/timer"
 import { markSectionCompleted } from "../../../../../lib/test-strotage"
-import { Volume2, VolumeX } from "lucide-react"
+import { Volume2, VolumeX, Wifi, Bell, Menu, X } from "lucide-react"
 import { useCustomAlert } from "../../../../../components/custom-allert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Slider } from "@/components/ui/slider"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import React, { type ReactElement } from "react" // Import React for Fragment
 
 interface LQuestion {
   id: number
@@ -53,8 +53,9 @@ interface ListeningTestData {
   questions: Question[]
 }
 
-export default function ListeningTestPage() {
-  const params = useParams()
+export default function ListeningTestPage({ params }: { params: Promise<{ examId: string }> }) {
+  const paramsParsed = useParams()
+  const examId = paramsParsed.examId as string
   const router = useRouter()
   const [testData, setTestData] = useState<ListeningTestData | null>(null)
   const [currentPart, setCurrentPart] = useState(1)
@@ -73,7 +74,11 @@ export default function ListeningTestPage() {
   const [timerExpired, setTimerExpired] = useState(false)
   const [audioDuration, setAudioDuration] = useState<number>(0)
   const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0)
-  // </CHANGE>
+  const [audioDurationLoaded, setAudioDurationLoaded] = useState(false)
+
+  const [showSettings, setShowSettings] = useState(false)
+  const [textSize, setTextSize] = useState(16)
+  const [colorMode, setColorMode] = useState<"default" | "night" | "yellow">("default")
 
   const getUserId = () => {
     try {
@@ -94,7 +99,8 @@ export default function ListeningTestPage() {
   const audioRef = useRef<HTMLAudioElement>(null)
   const questionRefs = useRef<{ [key: number]: HTMLDivElement | null }>({})
 
-  const examId = params.examId as string
+  // Added state for current question index
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
 
   useEffect(() => {
     setUserId(getUserId())
@@ -103,30 +109,128 @@ export default function ListeningTestPage() {
 
   useEffect(() => {
     const audio = audioRef.current
-    if (!audio) return
+    if (!audio || !testData?.audio_url) {
+      console.log("[v0] Audio element or URL not ready yet")
+      return
+    }
+
+    console.log("[v0] Setting up audio duration detection for:", testData.audio_url)
 
     const updateTime = () => {
       setAudioCurrentTime(audio.currentTime)
     }
 
     const updateDuration = () => {
-      setAudioDuration(audio.duration)
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+        console.log("[v0] Audio duration successfully loaded:", audio.duration, "seconds")
+        console.log("[v0] Formatted duration:", formatAudioTime(audio.duration))
+        setAudioDuration(audio.duration)
+        setAudioDurationLoaded(true)
+      } else {
+        console.log("[v0] Audio duration not ready yet, readyState:", audio.readyState)
+      }
     }
 
+    const handleCanPlay = () => {
+      console.log("[v0] Audio can play event triggered")
+      updateDuration()
+    }
+
+    const handleLoadedMetadata = () => {
+      console.log("[v0] Audio metadata loaded event triggered")
+      updateDuration()
+    }
+
+    const handleError = (e: Event) => {
+      console.error("[v0] Audio loading error:", e)
+      showAlert({
+        title: "Audio Loading Error",
+        description: "Failed to load audio file. Please check your connection and try again.",
+        type: "error",
+        confirmText: "OK",
+        showCancel: false,
+      })
+    }
+
+    // Add event listeners
     audio.addEventListener("timeupdate", updateTime)
-    audio.addEventListener("loadedmetadata", updateDuration)
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata)
     audio.addEventListener("durationchange", updateDuration)
-    // </CHANGE>
+    audio.addEventListener("canplay", handleCanPlay)
+    audio.addEventListener("error", handleError)
+
+    // Try to get duration immediately if audio is already loaded
+    if (audio.readyState >= 1) {
+      console.log("[v0] Audio already loaded, getting duration immediately")
+      updateDuration()
+    }
+
+    // Force load metadata
+    audio.load()
 
     return () => {
       audio.removeEventListener("timeupdate", updateTime)
-      audio.removeEventListener("loadedmetadata", updateDuration)
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata)
       audio.removeEventListener("durationchange", updateDuration)
-      // </CHANGE>
+      audio.removeEventListener("canplay", handleCanPlay)
+      audio.removeEventListener("error", handleError)
     }
-  }, [])
-  // </CHANGE>
+  }, [testData]) // Now depends on testData so it runs when audio URL is available
 
+  const increaseTextSize = () => {
+    setTextSize((prev) => Math.min(prev + 2, 24))
+  }
+
+  const decreaseTextSize = () => {
+    setTextSize((prev) => Math.max(prev - 2, 12))
+  }
+
+  const getColorModeClasses = () => {
+    switch (colorMode) {
+      case "night":
+        return "bg-gray-900 text-white"
+      case "yellow":
+        return "bg-yellow-50 text-gray-900"
+      default:
+        return "bg-white text-gray-900"
+    }
+  }
+
+  const getHeaderColorClasses = () => {
+    const audioTimeRemaining =
+      audioDurationLoaded && audioDuration > 0 ? Math.max(0, audioDuration + 120 - audioCurrentTime) : 0
+    const isWarningMode = audioTimeRemaining > 0 && audioTimeRemaining < 120
+
+    if (timerActive && timeRemaining < 120) {
+      return "bg-red-600 border-red-700"
+    }
+
+    switch (colorMode) {
+      case "night":
+        return "bg-gray-800 border-gray-700"
+      case "yellow":
+        return "bg-yellow-100 border-yellow-200"
+      default:
+        return "bg-white border-gray-200"
+    }
+  }
+
+  const getNavigationColorClasses = () => {
+    switch (colorMode) {
+      case "night":
+        return "bg-gray-800 border-gray-700"
+      case "yellow":
+        return "bg-yellow-100 border-yellow-200"
+      default:
+        return "bg-white border-gray-200"
+    }
+  }
+
+  const audioTimeRemaining =
+    audioDurationLoaded && audioDuration > 0 ? Math.max(0, audioDuration + 120 - audioCurrentTime) : 0
+  const isWarningMode = audioTimeRemaining > 0 && audioTimeRemaining < 120
+
+  console.log(audioTimeRemaining, isWarningMode)
   const startAudioTest = () => {
     setShowAudioWarning(false)
     setAudioStarted(true)
@@ -173,7 +277,8 @@ export default function ListeningTestPage() {
         question.rows.forEach((row: any) => {
           if (row.cells && Array.isArray(row.cells)) {
             row.cells.forEach((cell: any) => {
-              if (cell === "" || cell === "_") {
+              // Check for empty cells or cells with underscores
+              if (cell === "" || cell === "_" || (typeof cell === "string" && /_+/.test(cell))) {
                 inputCount++
               }
             })
@@ -294,8 +399,15 @@ export default function ListeningTestPage() {
     return questionCounter
   }
 
-  const handleAnswerChange = (questionId: number | string, answer: any, questionIdentifier?: string) => {
+  const getQuestionType = (questionId: string): string => {
+    const baseQuestionId = questionId.split("_")[0]
+    const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+    return question?.q_type || "UNKNOWN"
+  }
+
+  const handleAnswerChange = (questionId: string, answer: any, questionIdentifier?: string) => {
     const questionIdStr = questionId.toString()
+    const questionType = getQuestionType(questionIdStr)
 
     let stateAnswer = answer
     if (questionIdentifier && questionIdentifier.includes("_flow_")) {
@@ -323,22 +435,11 @@ export default function ListeningTestPage() {
     }
     setAnswers(newAnswers)
 
-    const answersKey = `answers_${examId}_listening`
-    const existingAnswers = localStorage.getItem(answersKey)
-    let answersArray: any[] = []
-
-    try {
-      if (existingAnswers) {
-        const parsed = JSON.parse(existingAnswers)
-        answersArray = Array.isArray(parsed) ? parsed : []
-      }
-    } catch (error) {
-      console.log("[v0] Error parsing localStorage answers, starting with empty array:", error)
-      answersArray = []
-    }
+    const answersKey = `listening_answers_${examId}_${userId}`
+    let answersArray = JSON.parse(localStorage.getItem(answersKey) || "[]")
 
     const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr.split("_")[0])
-    const questionType = question?.q_type || "UNKNOWN"
+    const actualQuestionType = question?.q_type || "UNKNOWN"
 
     const isEmptyAnswer =
       !answer || (typeof answer === "string" && answer.trim() === "") || (Array.isArray(answer) && answer.length === 0)
@@ -369,19 +470,25 @@ export default function ListeningTestPage() {
           userId: String(userId),
           questionId: mapQuestion.listening_questions_id,
           examId: Number.parseInt(examId),
-          question_type: questionType,
+          question_type: actualQuestionType,
           answer: `${position}:${selectedOptionKey}`,
           l_questionsID: actualLQuestionId,
         })
       } else if (questionIdStr.includes("_table_")) {
-        const parts = questionIdStr.split("_")
+        const parts = questionId.split("_table_")
         const baseQuestionId = parts[0]
-        const rowIndex = Number.parseInt(parts[parts.length - 2])
-        const cellIndex = Number.parseInt(parts[parts.length - 1])
+        const [rowIndex, cellIndex] = parts[1].split("_").map(Number)
 
-        const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
-        const l_questionsID = question?.listening_questions_id
+        const tableQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
 
+        if (!tableQuestion) {
+          console.error("[v0] Could not find TABLE question for baseQuestionId:", baseQuestionId)
+          return
+        }
+
+        const cellKey = `${rowIndex}_${cellIndex}`
+
+        // Calculate unique l_questionsID for this cell
         const allQuestions = getAllQuestions()
         const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
 
@@ -390,36 +497,56 @@ export default function ListeningTestPage() {
           questionCounter += getQuestionCount(allQuestions[i])
         }
 
-        let cellCounter = 0
-        if (question?.rows && Array.isArray(question.rows)) {
-          for (let r = 0; r < question.rows.length; r++) {
-            const row = question.rows[r]
-            if (row.cells && Array.isArray(row.cells)) {
+        // Count how many cells come before this one in the table
+        let cellOffset = 0
+        if (tableQuestion.rows) {
+          for (let r = 0; r < tableQuestion.rows.length; r++) {
+            const row = tableQuestion.rows[r]
+            if (row.cells) {
               for (let c = 0; c < row.cells.length; c++) {
-                if (row.cells[c] === "" || row.cells[c] === "_") {
+                const cell = row.cells[c]
+                const isEmptyOrUnderscore = cell === "" || cell === "_"
+                const hasUnderscores = typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+
+                if (isEmptyOrUnderscore || hasUnderscores) {
                   if (r === rowIndex && c === cellIndex) {
                     break
                   }
-                  cellCounter++
+                  cellOffset++
                 }
               }
-              if (r === rowIndex) break
+              if (rowIndex === r) break
             }
           }
         }
 
-        const uniqueLQuestionsID = questionCounter + cellCounter
+        const uniqueLQuestionsID = questionCounter + cellOffset
 
+        // Remove existing entry for this cell
         answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
 
+        // Add new entry with answer format: {"rowIndex_cellIndex": "value"}
         answersArray.push({
           userId: String(userId),
-          questionId: l_questionsID,
+          questionId: tableQuestion.listening_questions_id,
           examId: Number.parseInt(examId),
-          question_type: questionType,
-          answer: answer,
+          question_type: actualQuestionType,
+          answer: { [cellKey]: answer },
           l_questionsID: uniqueLQuestionsID,
         })
+
+        // Update state for UI
+        const tableAnswersKey = `${baseQuestionId}_answer`
+        const currentTableAnswers = answers[tableAnswersKey] || {}
+        const updatedTableAnswers = {
+          ...currentTableAnswers,
+          [cellKey]: answer,
+        }
+
+        setAnswers((prev) => ({
+          ...prev,
+          [tableAnswersKey]: updatedTableAnswers,
+        }))
       } else if (questionIdStr.includes("_matching_")) {
         const parts = questionIdStr.split("_")
         const baseQuestionId = parts[0]
@@ -444,11 +571,11 @@ export default function ListeningTestPage() {
           userId: String(userId),
           questionId: l_questionsID,
           examId: Number.parseInt(examId),
-          question_type: questionType,
+          question_type: actualQuestionType,
           answer: answer,
           l_questionsID: uniqueLQuestionsID,
         })
-      } else if (questionType === "MCQ_MULTI" && Array.isArray(answer)) {
+      } else if (actualQuestionType === "MCQ_MULTI" && Array.isArray(answer)) {
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
         const l_questionsID = question?.listening_questions_id
 
@@ -459,12 +586,12 @@ export default function ListeningTestPage() {
             userId: String(userId),
             questionId: l_questionsID,
             examId: Number.parseInt(examId),
-            question_type: questionType,
+            question_type: actualQuestionType,
             answer: selectedOption,
             l_questionsID: Number.parseInt(questionIdStr) + index,
           })
         })
-      } else if (questionType === "FLOW_CHART" && questionIdentifier && questionIdentifier.includes("_flow_")) {
+      } else if (actualQuestionType === "FLOW_CHART" && questionIdentifier && questionIdentifier.includes("_flow_")) {
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
         const stepNum = parts[2]
@@ -480,11 +607,15 @@ export default function ListeningTestPage() {
           userId: String(userId),
           questionId: l_questionsID,
           examId: Number.parseInt(examId),
-          question_type: questionType,
+          question_type: actualQuestionType,
           answer: `${stepNum}:${answer}`,
           l_questionsID: l_questionsID,
         })
-      } else if (questionType === "NOTE_COMPLETION" && questionIdentifier && questionIdentifier.includes("_note_")) {
+      } else if (
+        actualQuestionType === "NOTE_COMPLETION" &&
+        questionIdentifier &&
+        questionIdentifier.includes("_note_")
+      ) {
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
         const inputIndex = Number.parseInt(parts[2])
@@ -493,13 +624,11 @@ export default function ListeningTestPage() {
         const l_questionsID = question?.listening_questions_id
 
         const allQuestions = getAllQuestions()
-        const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
-
+        const baseQuestionIndex = allQuestions.findIndex((q) => q.id === question.id)
         let questionCounter = 1
         for (let i = 0; i < baseQuestionIndex; i++) {
           questionCounter += getQuestionCount(allQuestions[i])
         }
-
         const actualQuestionNumber = questionCounter + inputIndex
 
         answersArray = answersArray.filter((item: any) => item.l_questionsID !== actualQuestionNumber)
@@ -508,7 +637,7 @@ export default function ListeningTestPage() {
           userId: String(userId),
           questionId: l_questionsID,
           examId: Number.parseInt(examId),
-          question_type: questionType,
+          question_type: actualQuestionType,
           answer: { [(inputIndex + 1).toString()]: answer },
           l_questionsID: actualQuestionNumber,
         })
@@ -524,7 +653,7 @@ export default function ListeningTestPage() {
           userId: String(userId),
           questionId: l_questionsID,
           examId: Number.parseInt(examId),
-          question_type: questionType,
+          question_type: actualQuestionType,
           answer: formattedAnswer,
           l_questionsID: Number.parseInt(questionIdStr),
         })
@@ -544,14 +673,13 @@ export default function ListeningTestPage() {
           )
         }
       } else if (questionIdStr.includes("_table_")) {
-        const parts = questionIdStr.split("_")
+        const parts = questionId.split("_table_")
         const baseQuestionId = parts[0]
-        const rowIndex = Number.parseInt(parts[parts.length - 2])
-        const cellIndex = Number.parseInt(parts[parts.length - 1])
+        const [rowIndex, cellIndex] = parts[1].split("_").map(Number)
 
-        const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        const tableQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
 
-        if (question) {
+        if (tableQuestion) {
           const allQuestions = getAllQuestions()
           const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
 
@@ -560,27 +688,43 @@ export default function ListeningTestPage() {
             questionCounter += getQuestionCount(allQuestions[i])
           }
 
-          let cellCounter = 0
-          if (question.rows && Array.isArray(question.rows)) {
-            for (let r = 0; r < question.rows.length; r++) {
-              const row = question.rows[r]
-              if (row.cells && Array.isArray(row.cells)) {
+          let cellOffset = 0
+          if (tableQuestion.rows) {
+            for (let r = 0; r < tableQuestion.rows.length; r++) {
+              const row = tableQuestion.rows[r]
+              if (row.cells) {
                 for (let c = 0; c < row.cells.length; c++) {
-                  if (row.cells[c] === "" || row.cells[c] === "_") {
+                  const cell = row.cells[c]
+                  const isEmptyOrUnderscore = cell === "" || cell === "_"
+                  const hasUnderscores = typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+
+                  if (isEmptyOrUnderscore || hasUnderscores) {
                     if (r === rowIndex && c === cellIndex) {
                       break
                     }
-                    cellCounter++
+                    cellOffset++
                   }
                 }
-                if (r === rowIndex) break
+                if (rowIndex === r) break
               }
             }
           }
 
-          const uniqueLQuestionsID = questionCounter + cellCounter
+          const uniqueLQuestionsID = questionCounter + cellOffset
           answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
         }
+
+        // Update state
+        const tableAnswersKey = `${baseQuestionId}_answer`
+        const currentTableAnswers = answers[tableAnswersKey] || {}
+        const cellKey = `${rowIndex}_${cellIndex}`
+        const updatedTableAnswers = { ...currentTableAnswers }
+        delete updatedTableAnswers[cellKey]
+
+        setAnswers((prev) => ({
+          ...prev,
+          [tableAnswersKey]: Object.keys(updatedTableAnswers).length > 0 ? updatedTableAnswers : null,
+        }))
       } else if (questionIdStr.includes("_matching_")) {
         const parts = questionIdStr.split("_")
         const baseQuestionId = parts[0]
@@ -600,7 +744,7 @@ export default function ListeningTestPage() {
           const uniqueLQuestionsID = questionCounter + rowIndex
           answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
         }
-      } else if (questionType === "FLOW_CHART" && questionIdentifier && questionIdentifier.includes("_flow_")) {
+      } else if (actualQuestionType === "FLOW_CHART" && questionIdentifier && questionIdentifier.includes("_flow_")) {
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
         const stepNum = parts[2]
@@ -613,7 +757,11 @@ export default function ListeningTestPage() {
             (item: any) => !(item.questionId === l_questionsID && item.answer?.startsWith(`${stepNum}:`)),
           )
         }
-      } else if (questionType === "NOTE_COMPLETION" && questionIdentifier && questionIdentifier.includes("_note_")) {
+      } else if (
+        actualQuestionType === "NOTE_COMPLETION" &&
+        questionIdentifier &&
+        questionIdentifier.includes("_note_")
+      ) {
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
         const inputIndex = Number.parseInt(parts[2])
@@ -622,8 +770,7 @@ export default function ListeningTestPage() {
 
         if (question) {
           const allQuestions = getAllQuestions()
-          const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
-
+          const baseQuestionIndex = allQuestions.findIndex((q) => q.id === question.id)
           let questionCounter = 1
           for (let i = 0; i < baseQuestionIndex; i++) {
             questionCounter += getQuestionCount(allQuestions[i])
@@ -632,7 +779,7 @@ export default function ListeningTestPage() {
           const actualQuestionNumber = questionCounter + inputIndex
           answersArray = answersArray.filter((item: any) => item.l_questionsID !== actualQuestionNumber)
         }
-      } else if (questionType === "MCQ_MULTI") {
+      } else if (actualQuestionType === "MCQ_MULTI") {
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
         const l_questionsID = question?.listening_questions_id
         answersArray = answersArray.filter((item: any) => item.questionId !== l_questionsID)
@@ -651,11 +798,11 @@ export default function ListeningTestPage() {
   const handleSubmit = async (autoSubmit = false) => {
     if (!autoSubmit) {
       showAlert({
-        title: "Submit Test",
-        description: "Are you sure you want to submit your test? This action cannot be undone.",
+        title: "Testni yakunlash",
+        description: "Rostdan ham testni yakunlamoqchimisiz? Bu amalni bekor qilib bo'lmaydi.",
         type: "warning",
-        confirmText: "Yes, Submit",
-        cancelText: "No, Continue",
+        confirmText: "Ha, yakunlash",
+        cancelText: "Yo'q, davom etish",
         onConfirm: async () => {
           await submitAnswers()
         },
@@ -673,29 +820,58 @@ export default function ListeningTestPage() {
     try {
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
-      const answersKey = `answers_${examId}_listening`
+      // Read from the correct localStorage key
+      const answersKey = `listening_answers_${examId}_${userId}`
       const savedAnswers = localStorage.getItem(answersKey)
-      const submissionData = savedAnswers ? JSON.parse(savedAnswers) : []
 
-      for (const answerData of submissionData) {
-        await fetch(`${API_BASE_URL}/listening-answers`, {
+      if (!savedAnswers) {
+        console.log("[v0] No answers found in localStorage")
+        showAlert({
+          title: "Xatolik",
+          description: "Javoblar topilmadi. Iltimos, qaytadan urinib ko'ring.",
+          type: "error",
+          confirmText: "OK",
+          showCancel: false,
+        })
+        setShowSubmitLoading(false)
+        return
+      }
+
+      const answersArray = JSON.parse(savedAnswers)
+      console.log("[v0] Submitting answers:", answersArray)
+
+      // Post all answers to listening_answers API
+      for (const answerData of answersArray) {
+        const response = await fetch(`${API_BASE_URL}/listening_answers`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(answerData),
         })
+
+        if (!response.ok) {
+          throw new Error(`Failed to submit answer: ${response.statusText}`)
+        }
       }
 
+      // Clear localStorage after successful submission
       localStorage.removeItem(answersKey)
       markSectionCompleted(examId, "listening")
 
-      setTimeout(() => {
-        router.push(`/mock/${examId}`)
-      }, 1500)
-    } catch (error) {
-      console.error("Failed to submit listening test:", error)
       showAlert({
-        title: "Submission Error",
-        description: "Failed to submit your answers. Please try again.",
+        title: "Muvaffaqiyatli!",
+        description: "Javoblaringiz muvaffaqiyatli yuborildi.",
+        type: "success",
+        confirmText: "OK",
+        showCancel: false,
+        onConfirm: () => {
+          router.push(`/mock/${examId}`)
+        },
+      })
+    } catch (error) {
+      console.error("[v0] Failed to submit listening test:", error)
+      showAlert({
+        title: "Xatolik",
+        description: "Javoblarni yuborishda xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring.",
         type: "error",
         confirmText: "OK",
         showCancel: false,
@@ -738,18 +914,28 @@ export default function ListeningTestPage() {
     const questionIdStr = question.id.toString()
 
     if (question.q_type === "TABLE_COMPLETION") {
-      if (question.rows && Array.isArray(question.rows)) {
-        let cellCounter = 0
-        for (let r = 0; r < question.rows.length; r++) {
-          const row = question.rows[r]
-          if (row.cells && Array.isArray(row.cells)) {
-            for (let c = 0; c < row.cells.length; c++) {
-              if (row.cells[c] === "" || row.cells[c] === "_") {
-                if (cellCounter === subIndex) {
-                  const answer = answers[`${questionIdStr}_table_${r}_${c}`]
-                  return answer !== undefined && answer !== "" && answer !== null
+      const tableAnswersKey = `${questionIdStr}_answer`
+      const answersForThisTableQuestion = answers[tableAnswersKey]
+
+      if (answersForThisTableQuestion && typeof answersForThisTableQuestion === "object") {
+        let currentCellIndex = 0
+        if (question.rows && Array.isArray(question.rows)) {
+          for (let r = 0; r < question.rows.length; r++) {
+            const row = question.rows[r]
+            if (row.cells && Array.isArray(row.cells)) {
+              for (let c = 0; c < row.cells.length; c++) {
+                const cell = row.cells[c]
+                const isEmptyOrUnderscore = cell === "" || cell === "_" || (typeof cell === "string" && /_+/.test(cell))
+                if (isEmptyOrUnderscore) {
+                  if (currentCellIndex === subIndex) {
+                    const answerKey = `${r}_${c}`
+                    return (
+                      answersForThisTableQuestion[answerKey] !== undefined &&
+                      answersForThisTableQuestion[answerKey] !== ""
+                    )
+                  }
+                  currentCellIndex++
                 }
-                cellCounter++
               }
             }
           }
@@ -813,7 +999,7 @@ export default function ListeningTestPage() {
       }
       return false
     } else if (question.q_type === "NOTE_COMPLETION") {
-      const answersKey = `answers_${examId}_listening`
+      const answersKey = `listening_answers_${examId}_${userId}`
       const savedAnswers = localStorage.getItem(answersKey)
       const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
 
@@ -865,7 +1051,7 @@ export default function ListeningTestPage() {
 
   const handleTimerExpired = () => {
     setTimerExpired(true)
-    // Auto-submit without confirmation
+    // Auto-submit without confirmation when timer expires
     handleSubmit(true)
   }
 
@@ -889,51 +1075,312 @@ export default function ListeningTestPage() {
     })
   }
 
-  const getTableCellQuestionNumber = (questionId: string, rowIndex: number, cellIndex: number): number => {
+  const getPartQuestionRange = (partNumber: number): { start: number; end: number } => {
+    const allQuestions = getAllQuestions()
+    let currentQuestionIndex = 1
+
+    console.log("[v0] Calculating range for Part", partNumber)
+    console.log("[v0] Total questions:", allQuestions.length)
+
+    for (let i = 1; i <= 4; i++) {
+      const questionsInPart = getQuestionsByPart(i)
+      const partQuestionCount = questionsInPart.reduce((sum, q) => sum + getQuestionCount(q), 0)
+
+      console.log(`[v0] Part ${i}: ${partQuestionCount} questions, starts at ${currentQuestionIndex}`)
+      console.log(
+        `[v0] Part ${i} questions:`,
+        questionsInPart.map((q) => ({ id: q.id, part: q.part, type: q.q_type })),
+      )
+
+      if (i === partNumber) {
+        const range = { start: currentQuestionIndex, end: currentQuestionIndex + partQuestionCount - 1 }
+        console.log(`[v0] Returning range for Part ${partNumber}:`, range)
+        return range
+      }
+      currentQuestionIndex += partQuestionCount
+    }
+    return { start: 0, end: 0 } // Should not happen
+  }
+
+  const getPartBasedQuestionNumber = (questionId: number | string, part: string): number => {
+    const allQuestions = getAllQuestions()
+    let currentQuestionNumber = 0
+    for (const q of allQuestions) {
+      if (q.part === part) {
+        const qIdStr = typeof questionId === "string" ? questionId : questionId.toString()
+        if (q.id.toString() === qIdStr) {
+          return currentQuestionNumber + 1
+        }
+        currentQuestionNumber += getQuestionCount(q)
+      } else if (q.part > part) {
+        break
+      }
+    }
+    return 1 // Fallback
+  }
+
+  const getTableCellPartBasedQuestionNumber = (
+    questionId: string,
+    rowIndex: number,
+    cellIndex: number,
+    part: string,
+  ): number => {
     const baseQuestionId = questionId.split("_")[0]
     const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
 
     if (!question) return 1
 
-    // Get the starting question number for this table
     const allQuestions = getAllQuestions()
-    const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
-
-    let questionCounter = 1
-    for (let i = 0; i < baseQuestionIndex; i++) {
-      questionCounter += getQuestionCount(allQuestions[i])
-    }
-
-    // Count which input this is within the table
-    let cellCounter = 0
-    if (question.rows && Array.isArray(question.rows)) {
-      for (let r = 0; r < question.rows.length; r++) {
-        const row = question.rows[r]
-        if (row.cells && Array.isArray(row.cells)) {
-          for (let c = 0; c < row.cells.length; c++) {
-            if (row.cells[c] === "" || row.cells[c] === "_") {
-              if (r === rowIndex && c === cellIndex) {
-                return questionCounter + cellCounter
+    let currentQuestionNumber = 0
+    for (const q of allQuestions) {
+      if (q.part === part) {
+        if (q.id.toString() === baseQuestionId) {
+          let cellCounter = 0
+          if (q.rows && Array.isArray(q.rows)) {
+            for (let r = 0; r < q.rows.length; r++) {
+              const row = q.rows[r]
+              if (row.cells && Array.isArray(row.cells)) {
+                for (let c = 0; c < row.cells.length; c++) {
+                  const cell = row.cells[c]
+                  const isEmptyOrUnderscore = cell === "" || cell === "_"
+                  const hasUnderscores = typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+                  if (isEmptyOrUnderscore || hasUnderscores) {
+                    if (r === rowIndex && c === cellIndex) {
+                      return currentQuestionNumber + cellCounter + 1
+                    }
+                    cellCounter++
+                  }
+                }
               }
-              cellCounter++
             }
           }
+          break // Found the question, but cell wasn't in blanks
         }
+        currentQuestionNumber += getQuestionCount(q)
+      } else if (q.part > part) {
+        break
       }
     }
+    return 1 // Fallback
+  }
 
-    return questionCounter
+  const getFlowChartStepPartBasedQuestionNumber = (questionId: string, stepNum: string, part: string): number => {
+    const baseQuestionId = questionId.split("_")[0]
+    const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+    if (!question) return 1
+
+    const allQuestions = getAllQuestions()
+    let questionCounter = 0
+    for (const q of allQuestions) {
+      if (q.part === part) {
+        if (q.id.toString() === baseQuestionId) {
+          let blankCounter = 0
+          const sortedSteps = Object.entries(question.choices || {}).sort(([a], [b]) => Number(a) - Number(b))
+          for (const [step, text] of sortedSteps) {
+            if (typeof text === "string" && text.includes("__")) {
+              if (step === stepNum) {
+                return questionCounter + blankCounter + 1
+              }
+              blankCounter++
+            }
+          }
+          break
+        }
+        questionCounter += getQuestionCount(q)
+      } else if (q.part > part) {
+        break
+      }
+    }
+    return 1 // Fallback
+  }
+
+  const getNoteCompletionPartBasedQuestionNumber = (questionId: string, inputIndex: number, part: string): number => {
+    const baseQuestionId = questionId.split("_")[0]
+    const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+    if (!question) return 1
+
+    const allQuestions = getAllQuestions()
+    let questionCounter = 0
+    for (const q of allQuestions) {
+      if (q.part === part) {
+        if (q.id.toString() === baseQuestionId) {
+          return questionCounter + inputIndex + 1
+        }
+        questionCounter += getQuestionCount(q)
+      } else if (q.part > part) {
+        break
+      }
+    }
+    return 1 // Fallback
+  }
+
+  const formatAudioTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds) || !isFinite(seconds)) return "0:00"
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
   const formatAudioTimeRemaining = () => {
-    if (!audioDuration || audioDuration === 0) return "0:00"
-    // </CHANGE>
-    const remaining = Math.max(0, audioDuration - audioCurrentTime)
+    if (!audioDuration || audioDuration === 0 || !audioDurationLoaded) {
+      return "Loading..."
+    }
+
+    const totalTime = audioDuration + 120
+    const remaining = Math.max(0, totalTime - audioCurrentTime)
     const minutes = Math.floor(remaining / 60)
     const seconds = Math.floor(remaining % 60)
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`
+
+    // Agar 2 daqiqagacha bo‘lsa (ya’ni 2 yoki undan kam)
+    if (minutes <= 5 && minutes > 0) {
+      return `${minutes} minutes ${seconds} seconds`
+    }
+
+    // Agar faqat soniyalar qolgan bo‘lsa
+    if (minutes === 0) {
+      return `${seconds} seconds`
+    }
+
+    // Aks holda faqat daqiqa chiqsin
+    return `${minutes} minutes`
   }
-  // </CHANGE>
+
+  const formatTotalAudioDuration = () => {
+    if (!audioDuration || !audioDurationLoaded) return "..."
+    return formatAudioTime(audioDuration)
+  }
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const answersKey = `listening_answers_${examId}_${userId}`
+      const savedAnswers = localStorage.getItem(answersKey)
+
+      if (savedAnswers) {
+        try {
+          const parsedAnswers = JSON.parse(savedAnswers)
+          const loadedAnswers: Record<string, any> = {}
+
+          getAllQuestions().forEach((question) => {
+            const questionId = question.id.toString()
+
+            if (question.q_type === "TABLE_COMPLETION") {
+              // Load table answers from separate entry
+              const tableAnswersKey = `${questionId}_answer`
+              const tableAnswers = parsedAnswers[tableAnswersKey]
+
+              if (tableAnswers && typeof tableAnswers === "object") {
+                loadedAnswers[tableAnswersKey] = tableAnswers
+              }
+            } else if (question.q_type === "MATCHING_INFORMATION") {
+              // Existing loading logic for MATCHING_INFORMATION
+              const matchingAnswerKey = `${questionId}_matching_${question.rows?.length}` // Assuming unique key for matching
+              if (parsedAnswers[matchingAnswerKey]) {
+                loadedAnswers[matchingAnswerKey] = parsedAnswers[matchingAnswerKey]
+              }
+            } else if (question.q_type === "FLOW_CHART") {
+              // Existing loading logic for FLOW_CHART
+              if (parsedAnswers[questionId] && typeof parsedAnswers[questionId] === "object") {
+                loadedAnswers[questionId] = parsedAnswers[questionId]
+              }
+            } else if (question.q_type === "NOTE_COMPLETION") {
+              // Existing loading logic for NOTE_COMPLETION
+              const allQuestions = getAllQuestions()
+              const baseQuestionIndex = allQuestions.findIndex((q) => q.id === question.id)
+              let questionCounter = 1
+              for (let i = 0; i < baseQuestionIndex; i++) {
+                questionCounter += getQuestionCount(allQuestions[i])
+              }
+              const actualQuestionNumber = questionCounter
+              const noteAnswerKey = `${questionId}_note_${actualQuestionNumber}` // Assuming unique key
+              if (parsedAnswers[noteAnswerKey]) {
+                loadedAnswers[noteAnswerKey] = parsedAnswers[noteAnswerKey]
+              }
+            } else if (question.q_type === "MCQ_MULTI") {
+              // Existing loading logic for MCQ_MULTI
+              if (Array.isArray(parsedAnswers[questionId])) {
+                loadedAnswers[questionId] = parsedAnswers[questionId]
+              }
+            } else {
+              // Existing loading logic for other types
+              if (parsedAnswers[questionId] !== undefined) {
+                loadedAnswers[questionId] = parsedAnswers[questionId]
+              }
+            }
+          })
+          setAnswers(loadedAnswers)
+        } catch (error) {
+          console.error("Error loading answers:", error)
+        }
+      }
+    }
+  }, [examId, userId])
+
+  const saveToLocalStorage = (questionIdentifier: string, answer: any, questionType: string) => {
+    if (typeof window === "undefined") return
+
+    const answersKey = `listening_answers_${examId}_${userId}`
+    const answersData = localStorage.getItem(answersKey)
+    let answersObject: Record<string, any> = {}
+
+    if (answersData) {
+      try {
+        answersObject = JSON.parse(answersData)
+      } catch (error) {
+        console.error("Error parsing answers:", error)
+      }
+    }
+
+    if (questionType === "TABLE_COMPLETION") {
+      // Save table answers as a separate entry with key: questionId_answer
+      answersObject[questionIdentifier] = answer
+    } else {
+      // Other question types remain unchanged
+      answersObject[questionIdentifier] = answer
+    }
+
+    localStorage.setItem(answersKey, JSON.stringify(answersObject))
+  }
+
+  const clearAnswer = (questionIdentifier: string, questionType: string) => {
+    if (typeof window === "undefined") return
+
+    const answersKey = `listening_answers_${examId}_${userId}`
+    const answersData = localStorage.getItem(answersKey)
+    let answersObject: Record<string, any> = {}
+
+    if (answersData) {
+      try {
+        answersObject = JSON.parse(answersData)
+      } catch (error) {
+        console.error("Error parsing answers:", error)
+      }
+    }
+
+    if (questionType === "TABLE_COMPLETION") {
+      // Clear the entire table answer entry
+      const tableAnswersKey = `${questionIdentifier}_answer`
+      delete answersObject[tableAnswersKey]
+
+      // Also clear from state
+      setAnswers((prev) => {
+        const newAnswers = { ...prev }
+        delete newAnswers[tableAnswersKey]
+        return newAnswers
+      })
+    } else {
+      // Other question types remain unchanged
+      delete answersObject[questionIdentifier]
+      setAnswers((prev) => {
+        const newAnswers = { ...prev }
+        delete newAnswers[questionIdentifier]
+        return newAnswers
+      })
+    }
+
+    localStorage.setItem(answersKey, JSON.stringify(answersObject))
+  }
 
   if (isLoading) {
     return (
@@ -963,9 +1410,189 @@ export default function ListeningTestPage() {
   const currentPartQuestions = getQuestionsByPart(currentPart)
   const allParts = getAllParts()
 
+  const goToPreviousQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      const newIndex = currentQuestionIndex - 1
+      setCurrentQuestionIndex(newIndex)
+      const questionId = allQuestions[newIndex].id
+      const element = questionRefs.current[questionId]
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+      // Update currentPart based on the new question index
+      const question = allQuestions[newIndex]
+      if (question && question.part) {
+        setCurrentPart(Number(question.part.replace("PART", "")))
+      }
+    }
+  }
+
+  const goToNextQuestion = () => {
+    if (currentQuestionIndex < allQuestions.length - 1) {
+      const newIndex = currentQuestionIndex + 1
+      setCurrentQuestionIndex(newIndex)
+      const questionId = allQuestions[newIndex].id
+      const element = questionRefs.current[questionId]
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+      // Update currentPart based on the new question index
+      const question = allQuestions[newIndex]
+      if (question && question.part) {
+        setCurrentPart(Number(question.part.replace("PART", "")))
+      }
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-white">
-      <AlertComponent />
+    <div className={`flex flex-col h-screen ${getColorModeClasses()}`} style={{ fontSize: `${textSize}px ` }}>
+      <div className={`sticky top-0 z-50 ${getHeaderColorClasses()} border-b px-4 sm:px-6 py-4  `}>
+        <div className={`flex items-center justify-between `}>
+          <div className={`flex items-center space-x-4 sm:space-x-6  `}>
+            <div className={`font-bold text-xl sm:text-2xl ${isWarningMode ? "text-red-600" : "text-red-600"}`}>
+              IELTS
+            </div>
+            <div className={`text-base sm:text-lg font-medium ${isWarningMode ? "text-gray-800" : "text-gray-800"}`}>
+              Test taker ID: {userId}
+            </div>
+            {audioPlaying && (
+              <div
+                className={`text-sm sm:text-base flex items-center gap-2 px-3 py-2 rounded-lg ${isWarningMode ? "bg-red-700 text-white" : "text-gray-900 bg-gray-100"}`}
+              >
+                <Volume2
+                  className={`h-4 w-4 sm:h-5 sm:w-5 animate-pulse ${isWarningMode ? "text-white" : "text-gray-600"}`}
+                />
+                <span className="font-medium">Audio playing</span>
+                <span className={isWarningMode ? "text-white" : "text-gray-600"}></span>
+                <span className={isWarningMode ? "text-white" : "text-gray-600"}>
+                  • {formatAudioTimeRemaining()} remaining
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            {/* {timeRemaining !== null && (
+              <div className={`text-center ${timerActive ? "animate-pulse" : ""}`}>
+                <Timer
+                  initialTime={timeRemaining}
+                  onTimeUpdate={setTimeRemaining}
+                  onTimeUp={handleTimerExpired}
+                  isActive={timerActive}
+                  className="text-base sm:text-lg md:text-2xl font-mono font-bold bg-red-50 text-red-600 px-2 sm:px-4 py-1 sm:py-2 rounded border border-red-200"
+                />
+              </div>
+            )} */}
+
+            <div
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isWarningMode ? "bg-red-700" : "bg-gray-50"}`}
+            >
+              <VolumeX className={`h-4 w-4 sm:h-5 sm:w-5 ${isWarningMode ? "text-white" : "text-gray-600"}`} />
+              <Slider value={volume} onValueChange={handleVolumeChange} max={100} step={1} className="w-16 sm:w-24" />
+              <Volume2 className={`h-4 w-4 sm:h-5 sm:w-5 ${isWarningMode ? "text-white" : "text-gray-600"}`} />
+              <span className={`text-xs ml-1 ${isWarningMode ? "text-white" : "text-gray-500"}`}>{volume[0]}%</span>
+            </div>
+
+            <button
+              className={`p-2 rounded-lg transition-colors ${isWarningMode ? "bg-red-700" : "hover:bg-gray-100"}`}
+              aria-label="Network status"
+            >
+              <Wifi className={`h-5 w-5 ${isWarningMode ? "text-white" : "text-gray-600"}`} />
+            </button>
+
+            <button
+              className={`p-2 rounded-lg transition-colors ${isWarningMode ? "bg-red-700" : "hover:bg-gray-100"}`}
+              aria-label="Notifications"
+            >
+              <Bell className={`h-5 w-5 ${isWarningMode ? "text-white" : "text-gray-600"}`} />
+            </button>
+
+            <button
+              onClick={() => setShowSettings(true)}
+              className={`p-2 rounded-lg transition-colors ${isWarningMode ? "bg-red-700" : "hover:bg-gray-100"}`}
+              aria-label="Settings"
+            >
+              <Menu className={`h-5 w-5 ${isWarningMode ? "text-white" : "text-gray-600"}`} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showSettings && (
+        <div className="fixed inset-0 bg-transparent flex items-center justify-center z-[100]">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-xl w-full mx-4">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-3xl font-bold text-gray-900">Settings</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="Close settings"
+              >
+                <X className="h-6 w-6 text-gray-600" />
+              </button>
+            </div>
+
+            <div className="space-y-10">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-6">Text Size</h3>
+                <div className="flex items-center justify-center gap-8">
+                  <button
+                    onClick={decreaseTextSize}
+                    className="w-14 h-14 bg-gray-300 hover:bg-gray-400 rounded-xl text-3xl font-bold transition-colors flex items-center justify-center"
+                    aria-label="Decrease text size"
+                  >
+                    -
+                  </button>
+                  <span className="text-3xl font-semibold text-gray-900 min-w-[100px] text-center">{textSize}px</span>
+                  <button
+                    onClick={increaseTextSize}
+                    className="w-14 h-14 bg-gray-300 hover:bg-gray-400 rounded-xl text-3xl font-bold transition-colors flex items-center justify-center"
+                    aria-label="Increase text size"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-6">Color Mode</h3>
+                <div className="space-y-4">
+                  <button
+                    onClick={() => setColorMode("default")}
+                    className={`w-full py-5 px-6 rounded-xl text-lg font-semibold transition-all ${
+                      colorMode === "default"
+                        ? "bg-blue-600 text-white shadow-lg"
+                        : "bg-gray-200 text-gray-900 hover:bg-gray-300"
+                    }`}
+                  >
+                    Default (Day)
+                  </button>
+                  <button
+                    onClick={() => setColorMode("night")}
+                    className={`w-full py-5 px-6 rounded-xl text-lg font-semibold transition-all ${
+                      colorMode === "night"
+                        ? "bg-blue-600 text-white shadow-lg"
+                        : "bg-gray-200 text-gray-900 hover:bg-gray-300"
+                    }`}
+                  >
+                    Night Mode
+                  </button>
+                  <button
+                    onClick={() => setColorMode("yellow")}
+                    className={`w-full py-5 px-6 rounded-xl text-lg font-semibold transition-all ${
+                      colorMode === "yellow"
+                        ? "bg-blue-600 text-white shadow-lg"
+                        : "bg-gray-200 text-gray-900 hover:bg-gray-300"
+                    }`}
+                  >
+                    Yellow Mode
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Dialog open={showAudioWarning} onOpenChange={() => {}}>
         <DialogContent className="sm:max-w-md">
@@ -992,48 +1619,12 @@ export default function ListeningTestPage() {
           onPlay={() => setAudioPlaying(true)}
           onPause={() => setAudioPlaying(false)}
           volume={volume[0] / 100}
+          preload="metadata"
+          crossOrigin="anonymous"
         />
       )}
 
-      <div className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-4 sm:space-x-6">
-            <div className="text-gray-900 font-bold text-xl sm:text-2xl">IELTS</div>
-            <div className="text-base sm:text-lg font-medium text-gray-800">Test taker ID</div>
-            {audioPlaying && (
-              <div className="text-gray-900 text-sm sm:text-base flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-lg">
-                <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 animate-pulse text-gray-600" />
-                <span className="font-medium">Audio playing</span>
-                <span className="text-gray-600">• {formatAudioTimeRemaining()} left</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-6 w-full sm:w-auto">
-            {timeRemaining !== null && (
-              <div className={`text-center ${timerActive ? "animate-pulse" : ""}`}>
-                <Timer
-                  initialTime={timeRemaining}
-                  onTimeUpdate={setTimeRemaining}
-                  onTimeUp={handleTimerExpired}
-                  isActive={timerActive}
-                  className="text-base sm:text-lg md:text-2xl font-mono font-bold bg-red-50 text-red-600 px-2 sm:px-4 py-1 sm:py-2 rounded border border-red-200"
-                />
-              </div>
-            )}
-
-            <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg">
-              <VolumeX className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
-              <Slider value={volume} onValueChange={handleVolumeChange} max={100} step={1} className="w-16 sm:w-24" />
-              <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
-              <span className="text-xs text-gray-500 ml-1">{volume[0]}%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      {/* </CHANGE> */}
-
-      <div className="flex-1 pb-24">
+      <div className="flex-1 overflow-auto pb-32">
         <div className="max-w-4xl lg:max-w-6xl mx-auto p-4 sm:p-6">
           <div className="mb-6">
             <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-200">
@@ -1041,16 +1632,8 @@ export default function ListeningTestPage() {
                 <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Part {currentPart}</h2>
                 <p className="text-sm sm:text-base text-gray-600">
                   Listen and answer questions {(() => {
-                    const partQuestions = getQuestionsByPart(currentPart)
-                    if (partQuestions.length > 0) {
-                      const firstQ = getGlobalQuestionNumber(partQuestions[0].id)
-                      let lastQ = firstQ
-                      partQuestions.forEach((q) => {
-                        lastQ += getQuestionCount(q) - 1
-                      })
-                      return `${firstQ}–${lastQ}`
-                    }
-                    return "1–10"
+                    const range = getPartQuestionRange(currentPart)
+                    return `${range.start}–${range.end}`
                   })()}.
                 </p>
               </div>
@@ -1064,792 +1647,830 @@ export default function ListeningTestPage() {
                   </div>
                 ) : null
               })()}
-
-              {/* </CHANGE> */}
             </div>
           </div>
 
           <div className="mb-6">
             <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-6">
               Questions {(() => {
-                const partQuestions = getQuestionsByPart(currentPart)
-                if (partQuestions.length > 0) {
-                  const firstQ = getGlobalQuestionNumber(partQuestions[0].id)
-                  let lastQ = firstQ
-                  partQuestions.forEach((q) => {
-                    lastQ += getQuestionCount(q) - 1
-                  })
-                  return `${firstQ}–${lastQ}`
-                }
-                return "1–10"
+                const range = getPartQuestionRange(currentPart)
+                return `${range.start}–${range.end}`
               })()}
             </h3>
 
             <div className="space-y-6">
-              {currentPartQuestions.map((question) => {
-                const questionId = question.id.toString()
-                const currentAnswer = answers[questionId] || ""
+              {(() => {
+                const partRange = getPartQuestionRange(currentPart)
+                let sequentialQuestionNumber = partRange.start
 
-                let parsedOptions = question.options
-                if (typeof question.options === "string") {
-                  try {
-                    parsedOptions = JSON.parse(question.options)
-                  } catch (e) {
-                    parsedOptions = null
+                return currentPartQuestions.map((question, indexInPart) => {
+                  const questionId = question.id.toString()
+                  const questionType = getQuestionType(questionId)
+
+                  let currentAnswer: any
+
+                  if (questionType === "TABLE_COMPLETION") {
+                    const tableAnswersKey = `${questionId}_answer`
+                    currentAnswer = answers[tableAnswersKey] || {}
+                  } else {
+                    currentAnswer = answers[questionId] || ""
                   }
-                }
 
-                let optionsArray: { key: string; text: string }[] = []
+                  // Calculate how many inputs this question has
+                  const questionCount = getQuestionCount(question)
+                  const questionStartNum = sequentialQuestionNumber
+                  const questionEndNum = sequentialQuestionNumber + questionCount - 1
 
-                if (Array.isArray(parsedOptions)) {
-                  optionsArray = parsedOptions.map((option: any) => ({
-                    key: option.key || option.value || "",
-                    text: option.text || option.label || option.value || "",
-                  }))
-                } else if (parsedOptions && typeof parsedOptions === "object") {
-                  optionsArray = Object.entries(parsedOptions).map(([key, text]) => ({
-                    key,
-                    text: text as string,
-                  }))
-                }
+                  // Store the starting number for this question (for nested rendering)
+                  const thisQuestionStartNum = sequentialQuestionNumber
 
-                return (
-                  <div key={question.id} className="space-y-4 p-4 sm:p-6 border rounded-lg bg-white border-gray-200">
-                    <div className="text-base sm:text-lg font-semibold mb-4 text-gray-700">
-                      Question {getGlobalQuestionNumber(question.id)}
-                      {getQuestionCount(question) > 1 &&
-                        ` - ${getGlobalQuestionNumber(question.id) + getQuestionCount(question) - 1}`}
-                    </div>
-                    {/* </CHANGE> */}
+                  // Increment the counter for the next question
+                  sequentialQuestionNumber += questionCount
 
-                    {question.q_text && (
-                      <div className="text-base sm:text-lg mb-6 text-gray-900 font-medium leading-relaxed">
-                        {question.q_text}
-                      </div>
-                    )}
+                  let parsedOptions = question.options
+                  if (typeof question.options === "string") {
+                    try {
+                      parsedOptions = JSON.parse(question.options)
+                    } catch (e) {
+                      parsedOptions = null
+                    }
+                  }
 
-                    {question.q_type === "TFNG" ||
-                      (question.q_type === "TRUE_FALSE_NOT_GIVEN" && (
+                  let optionsArray: { key: string; text: string }[] = []
+
+                  if (Array.isArray(parsedOptions)) {
+                    optionsArray = parsedOptions.map((option: any) => ({
+                      key: option.key || option.value || "",
+                      text: option.text || option.label || option.value || "",
+                    }))
+                  } else if (parsedOptions && typeof parsedOptions === "object") {
+                    optionsArray = Object.entries(parsedOptions).map(([key, text]) => ({
+                      key,
+                      text: text as string,
+                    }))
+                  }
+
+                  return (
+                    <div
+                      key={question.id}
+                      className="space-y-4 p-4 sm:p-6 border rounded-lg bg-white border-gray-200"
+                      ref={(el) => (questionRefs.current[question.id] = el)}
+                    >
+                      {question.q_type !== "NOTE_COMPLETION" && (
+                        <div className="flex flex-row items-start gap-3 mb-4">
+                          <div className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0">
+                            {questionStartNum}
+                            {questionCount > 1 && ` - ${questionEndNum}`}
+                          </div>
+
+                          {question.q_text && (
+                            <div className="text-base sm:text-lg text-gray-900 font-medium leading-relaxed flex-1">
+                              {question.q_text}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {question.q_type === "TFNG" ||
+                        (question.q_type === "TRUE_FALSE_NOT_GIVEN" && (
+                          <div className="space-y-3">
+                            <RadioGroup
+                              value={currentAnswer || ""}
+                              onValueChange={(value) => handleAnswerChange(questionId, value)}
+                              className="space-y-3"
+                            >
+                              <div className="flex items-center space-x-3">
+                                <RadioGroupItem value="TRUE" id={`q${question.id}-true`} />
+                                <Label
+                                  htmlFor={`q${question.id}-true`}
+                                  className="cursor-pointer text-sm sm:text-base text-gray-900"
+                                >
+                                  TRUE
+                                </Label>
+                              </div>
+                              <div className="flex items-center space-x-3">
+                                <RadioGroupItem value="FALSE" id={`q${question.id}-false`} />
+                                <Label
+                                  htmlFor={`q${question.id}-false`}
+                                  className="cursor-pointer text-sm sm:text-base text-gray-900"
+                                >
+                                  FALSE
+                                </Label>
+                              </div>
+                              <div className="flex items-center space-x-3">
+                                <RadioGroupItem value="NOT_GIVEN" id={`q${question.id}-ng`} />
+                                <Label
+                                  htmlFor={`q${question.id}-ng`}
+                                  className="cursor-pointer text-sm sm:text-base text-gray-900"
+                                >
+                                  NOT GIVEN
+                                </Label>
+                              </div>
+                            </RadioGroup>
+                          </div>
+                        ))}
+
+                      {question.q_type === "MCQ_SINGLE" && optionsArray.length > 0 && (
                         <div className="space-y-3">
                           <RadioGroup
                             value={currentAnswer || ""}
                             onValueChange={(value) => handleAnswerChange(questionId, value)}
                             className="space-y-3"
                           >
-                            <div className="flex items-center space-x-3">
-                              <RadioGroupItem value="TRUE" id={`q${question.id}-true`} />
-                              <Label
-                                htmlFor={`q${question.id}-true`}
-                                className="cursor-pointer text-sm sm:text-base text-gray-900"
-                              >
-                                TRUE
-                              </Label>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <RadioGroupItem value="FALSE" id={`q${question.id}-false`} />
-                              <Label
-                                htmlFor={`q${question.id}-false`}
-                                className="cursor-pointer text-sm sm:text-base text-gray-900"
-                              >
-                                FALSE
-                              </Label>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <RadioGroupItem value="NOT_GIVEN" id={`q${question.id}-ng`} />
-                              <Label
-                                htmlFor={`q${question.id}-ng`}
-                                className="cursor-pointer text-sm sm:text-base text-gray-900"
-                              >
-                                NOT GIVEN
-                              </Label>
-                            </div>
-                          </RadioGroup>
-                        </div>
-                      ))}
-
-                    {question.q_type === "MCQ_SINGLE" && optionsArray.length > 0 && (
-                      <div className="space-y-3">
-                        <RadioGroup
-                          value={currentAnswer || ""}
-                          onValueChange={(value) => handleAnswerChange(questionId, value)}
-                          className="space-y-3"
-                        >
-                          {optionsArray.map((option, index) => (
-                            <div key={index} className="flex items-center space-x-3">
-                              <RadioGroupItem value={option.key} id={`q${question.id}-${option.key}`} />
-                              <Label
-                                htmlFor={`q${question.id}-${option.key}`}
-                                className="cursor-pointer text-sm sm:text-base text-gray-900"
-                              >
-                                <span className="font-medium">{option.key}</span> {option.text}
-                              </Label>
-                            </div>
-                          ))}
-                        </RadioGroup>
-                      </div>
-                    )}
-
-                    {question.q_type === "MCQ_MULTI" && optionsArray.length > 0 && (
-                      <div className="space-y-3">
-                        <div className="space-y-3">
-                          {optionsArray.map((option, index) => {
-                            const currentAnswersArray = currentAnswer
-                              ? Array.isArray(currentAnswer)
-                                ? currentAnswer
-                                : currentAnswer.split(",").filter(Boolean)
-                              : []
-
-                            return (
+                            {optionsArray.map((option, index) => (
                               <div key={index} className="flex items-center space-x-3">
-                                <input
-                                  type="checkbox"
-                                  id={`q${question.id}-${option.key}`}
-                                  checked={currentAnswersArray.includes(option.key)}
-                                  onChange={(e) => {
-                                    let newAnswers: string[]
-                                    if (e.target.checked) {
-                                      newAnswers = [...currentAnswersArray, option.key]
-                                    } else {
-                                      newAnswers = currentAnswersArray.filter((a) => a !== option.key)
-                                    }
-                                    handleAnswerChange(questionId, newAnswers)
-                                  }}
-                                  className="rounded border-gray-300"
-                                />
+                                <RadioGroupItem value={option.key} id={`q${question.id}-${option.key}`} />
                                 <Label
                                   htmlFor={`q${question.id}-${option.key}`}
                                   className="cursor-pointer text-sm sm:text-base text-gray-900"
                                 >
-                                  <span className="font-medium">{option.key}</span> {option.text}
+                                   {option.text}
                                 </Label>
                               </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {question.q_type === "SENTENCE_COMPLETION" && (
-                      <div className="space-y-2">
-                        <div className="text-base leading-relaxed text-gray-900">
-                          {(() => {
-                            const text = question.q_text || ""
-                            const parts = text.split(/_+/)
-
-                            if (parts.length === 1) {
-                              // No underscores, just show input below
-                              return (
-                                <>
-                                  <p className="mb-2">{text}</p>
-                                  <Input
-                                    value={currentAnswer || ""}
-                                    onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                                    placeholder="Your answer"
-                                    className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-blue-500"
-                                  />
-                                </>
-                              )
-                            }
-
-                            // Show inline input where underscore is
-                            return (
-                              <div className="flex flex-wrap items-center gap-2">
-                                {parts.map((part, index) => (
-                                  <React.Fragment key={index}>
-                                    <span>{part}</span>
-                                    {index < parts.length - 1 && (
-                                      <Input
-                                        value={currentAnswer || ""}
-                                        onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                                        className="inline-block w-32 px-2 py-1 text-sm bg-white border-gray-300 focus:border-blue-500"
-                                        placeholder={getGlobalQuestionNumber(question.id).toString()}
-                                      />
-                                    )}
-                                  </React.Fragment>
-                                ))}
-                              </div>
-                            )
-                          })()}
-                        </div>
-                      </div>
-                    )}
-
-                    {question.q_type === "SENTENCE_ENDINGS" && optionsArray.length > 0 && (
-                      <div className="space-y-4">
-                        <div className="space-y-3">
-                          <div className="border-2 border-dashed border-blue-300 bg-blue-50 p-3 rounded-lg min-h-[40px] flex items-center">
-                            {currentAnswer ? (
-                              <span className="text-blue-800 font-medium">{currentAnswer}</span>
-                            ) : (
-                              <span className="text-gray-400 text-xs">Select an option</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="border-t pt-3">
-                          <p className="text-xs text-gray-600 mb-2">Choose from:</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {optionsArray.map((option, index) => (
-                              <Button
-                                key={index}
-                                variant={currentAnswer === option.key ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => handleAnswerChange(questionId, option.key)}
-                                className={`text-xs p-2 h-auto text-left ${
-                                  currentAnswer === option.key
-                                    ? "bg-blue-600 text-white"
-                                    : "bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
-                                }`}
-                              >
-                                <span className="font-medium">{option.key}</span> {option.text}
-                              </Button>
                             ))}
+                          </RadioGroup>
+                        </div>
+                      )}
+
+                      {question.q_type === "MCQ_MULTI" && optionsArray.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="space-y-3">
+                            {optionsArray.map((option, index) => {
+                              const currentAnswersArray = currentAnswer
+                                ? Array.isArray(currentAnswer)
+                                  ? currentAnswer
+                                  : currentAnswer.split(",").filter(Boolean)
+                                : []
+
+                              const correctAnswersCount = Array.isArray(question.correct_answers)
+                                ? question.correct_answers.length
+                                : 1
+
+                              return (
+                                <div key={index} className="flex items-center space-x-3">
+                                  <input
+                                    type="checkbox"
+                                    id={`q${question.id}-${option.key}`}
+                                    checked={currentAnswersArray.includes(option.key)}
+                                    onChange={(e) => {
+                                      let newAnswers: string[]
+                                      if (e.target.checked) {
+                                        if (currentAnswersArray.length >= correctAnswersCount) {
+                                          // Remove the first selected answer to make room for the new one
+                                          newAnswers = [...currentAnswersArray.slice(1), option.key]
+                                        } else {
+                                          newAnswers = [...currentAnswersArray, option.key]
+                                        }
+                                      } else {
+                                        newAnswers = currentAnswersArray.filter((a) => a !== option.key)
+                                      }
+                                      handleAnswerChange(questionId, newAnswers)
+                                    }}
+                                    className="rounded border-gray-300"
+                                  />
+                                  <Label
+                                    htmlFor={`q${question.id}-${option.key}`}
+                                    className="cursor-pointer text-sm sm:text-base text-gray-900"
+                                  >
+                                     {option.text}
+                                  </Label>
+                                </div>
+                              )
+                            })}
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {question.q_type === "MATCHING_INFORMATION" && (
-                      <div className="space-y-6">
-                        <div className="overflow-x-auto">
-                          <table className="w-full border text-base border-gray-300">
-                            <thead>
-                              <tr className="bg-gray-50">
-                                <th className="border p-3 text-left font-semibold text-black border-gray-300">
-                                  Questions {getGlobalQuestionNumber(question.id)}–
-                                  {getGlobalQuestionNumber(question.id) + (question.rows?.length || 1) - 1}
-                                </th>
-                                {question.choices &&
-                                  Object.keys(question.choices).map((choiceKey) => (
-                                    <th
-                                      key={choiceKey}
-                                      className="border p-3 text-center font-semibold w-16 text-black border-gray-300"
-                                    >
-                                      {choiceKey}
-                                    </th>
+                      {question.q_type === "SENTENCE_COMPLETION" && (
+                        <div className="space-y-2">
+                          <div className="text-base leading-relaxed text-gray-900">
+                            {(() => {
+                              const text = question.q_text || ""
+                              const parts = text.split(/_+/)
+
+                              if (parts.length === 1) {
+                                // No underscores, just show input below
+                                return (
+                                  <>
+                                    <p className="mb-2">{text}</p>
+                                    <Input
+                                      value={currentAnswer || ""}
+                                      onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                                      className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
+                                      placeholder="Your answer"
+                                    />
+                                  </>
+                                )
+                              }
+
+                              // Show inline input where underscore is
+                              return (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {parts.map((part, index) => (
+                                    <React.Fragment key={index}>
+                                      <span>{part}</span>
+                                      {index < parts.length - 1 && (
+                                        <Input
+                                          value={currentAnswer || ""}
+                                          onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                                          className="inline-block w-32 px-2 py-1 text-sm bg-white border-gray-300 focus:border-gray-500"
+                                          placeholder={questionStartNum.toString()}
+                                        />
+                                      )}
+                                    </React.Fragment>
                                   ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {question.rows?.map((rowText, index) => (
-                                <tr key={index}>
-                                  <td className="border p-3 border-gray-300 text-black">
-                                    <div className="flex items-center gap-2">
-                                      <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium">
-                                        {getGlobalQuestionNumber(question.id) + index}
-                                      </span>
-                                      <span className="font-medium">{rowText}</span>
-                                    </div>
-                                  </td>
+                                </div>
+                              )
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
+                      {question.q_type === "SENTENCE_ENDINGS" && optionsArray.length > 0 && (
+                        <div className="space-y-4">
+                          <div className="space-y-3">
+                            <div className="border-2 border-dashed border-blue-300 bg-blue-50 p-3 rounded-lg min-h-[40px] flex items-center">
+                              {currentAnswer ? (
+                                <span className="text-blue-800 font-medium">{currentAnswer}</span>
+                              ) : (
+                                <span className="text-gray-400 text-xs">Select an option</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="border-t pt-3">
+                            <p className="text-xs text-gray-600 mb-2">Choose from:</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {optionsArray.map((option, index) => (
+                                <Button
+                                  key={index}
+                                  variant={currentAnswer === option.key ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handleAnswerChange(questionId, option.key)}
+                                  className={`text-xs p-2 h-auto text-left ${
+                                    currentAnswer === option.key
+                                      ? "bg-blue-600 text-white"
+                                      : "bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  <span className="font-medium">{option.key}</span> {option.text}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {question.q_type === "MATCHING_INFORMATION" && (
+                        <div className="space-y-6">
+                          <div className="overflow-x-auto">
+                            <table className="w-full border text-base border-gray-300">
+                              <thead>
+                                <tr className="bg-gray-50">
+                                  <th className="border p-3 text-left font-semibold text-black border-gray-300">
+                                    Questions {questionStartNum}–{questionEndNum}
+                                  </th>
                                   {question.choices &&
                                     Object.keys(question.choices).map((choiceKey) => (
-                                      <td key={choiceKey} className="border p-3 text-center border-gray-300">
-                                        <input
-                                          type="radio"
-                                          name={`matching_${question.id}_${index}`}
-                                          value={choiceKey}
-                                          checked={answers[`${question.id}_matching_${index}`] === choiceKey}
-                                          onChange={(e) =>
-                                            handleAnswerChange(`${question.id}_matching_${index}`, e.target.value)
-                                          }
-                                          className="w-4 h-4"
-                                        />
-                                      </td>
+                                      <th
+                                        key={choiceKey}
+                                        className="border p-3 text-center font-semibold w-16 text-black border-gray-300"
+                                      >
+                                        {choiceKey}
+                                      </th>
                                     ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {question.rows?.map((rowText, index) => (
+                                  <tr key={index}>
+                                    <td className="border p-3 border-gray-300 text-black">
+                                      <div className="flex items-center gap-2">
+                                        <span className="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium">
+                                          {questionStartNum + index}
+                                        </span>
+                                        <span className="font-medium">{rowText}</span>
+                                      </div>
+                                    </td>
+                                    {question.choices &&
+                                      Object.keys(question.choices).map((choiceKey) => (
+                                        <td key={choiceKey} className="border p-3 text-center border-gray-300">
+                                          <input
+                                            type="radio"
+                                            name={`matching_${question.id}_${index}`}
+                                            value={choiceKey}
+                                            checked={answers[`${question.id}_matching_${index}`] === choiceKey}
+                                            onChange={(e) =>
+                                              handleAnswerChange(`${question.id}_matching_${index}`, e.target.value)
+                                            }
+                                            className="w-4 h-4"
+                                          />
+                                        </td>
+                                      ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="mt-6">
+                            <h5 className="font-semibold mb-3 text-black">{question.q_text || "Choices:"}</h5>
+                            <div className="overflow-x-auto">
+                              <table className="w-full border text-base border-gray-300">
+                                <tbody>
+                                  {question.choices &&
+                                    Object.entries(question.choices).map(([key, text]) => (
+                                      <tr key={key}>
+                                        <td className="border p-3 w-16 text-center font-semibold bg-gray-50 text-black border-gray-300">
+                                          {key}
+                                        </td>
+                                        <td className="border p-3 border-gray-300 text-black">{text}</td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Updated TABLE_COMPLETION rendering to use separate entry format */}
+                      {question.q_type === "TABLE_COMPLETION" && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse border border-gray-300">
+                            <tbody>
+                              {question.rows?.map((row: any, rowIndex: number) => (
+                                <tr key={rowIndex}>
+                                  {row.cells?.map((cell: string, cellIndex: number) => {
+                                    const isEmptyOrUnderscore = cell === "" || cell === "_"
+                                    const hasUnderscores =
+                                      typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+
+                                    if (isEmptyOrUnderscore || hasUnderscores) {
+                                      const tableAnswersKey = `${questionId}_answer`
+                                      const tableAnswers = answers[tableAnswersKey] || {}
+                                      const cellKey = `${rowIndex}_${cellIndex}`
+
+                                      return (
+                                        <td key={cellIndex} className="border border-gray-300 p-2">
+                                          <div className="min-w-[150px]">
+                                            {hasUnderscores ? (
+                                              <div className="flex items-center gap-1 flex-wrap">
+                                                {cell.split(/(_+)/).map((part: string, partIndex: number) => {
+                                                  if (/_+/.test(part)) {
+                                                    return (
+                                                      <Input
+                                                        key={partIndex}
+                                                        value={tableAnswers[cellKey] || ""}
+                                                        onChange={(e) =>
+                                                          handleAnswerChange(
+                                                            `${questionId}_table_${rowIndex}_${cellIndex}`,
+                                                            e.target.value,
+                                                          )
+                                                        }
+                                                        className="w-32 text-sm bg-white border-gray-300 focus:border-gray-500 inline-block"
+                                                        placeholder="Answer"
+                                                      />
+                                                    )
+                                                  }
+                                                  return part ? (
+                                                    <span key={partIndex} className="text-gray-900">
+                                                      {part}
+                                                    </span>
+                                                  ) : null
+                                                })}
+                                              </div>
+                                            ) : (
+                                              <Input
+                                                value={tableAnswers[cellKey] || ""}
+                                                onChange={(e) =>
+                                                  handleAnswerChange(
+                                                    `${questionId}_table_${rowIndex}_${cellIndex}`,
+                                                    e.target.value,
+                                                  )
+                                                }
+                                                className="w-full text-sm bg-white border-gray-300 focus:border-gray-500"
+                                                placeholder="Answer"
+                                              />
+                                            )}
+                                          </div>
+                                        </td>
+                                      )
+                                    }
+
+                                    return (
+                                      <td key={cellIndex} className="border border-gray-300 p-2">
+                                        <span className="text-gray-900">{cell}</span>
+                                      </td>
+                                    )
+                                  })}
                                 </tr>
                               ))}
                             </tbody>
                           </table>
                         </div>
+                      )}
 
-                        <div className="mt-6">
-                          <h5 className="font-semibold mb-3 text-black">{question.q_text || "Choices:"}</h5>
-                          <div className="overflow-x-auto">
-                            <table className="w-full border text-base border-gray-300">
-                              <tbody>
-                                {question.choices &&
-                                  Object.entries(question.choices).map(([key, text]) => (
-                                    <tr key={key}>
-                                      <td className="border p-3 w-16 text-center font-semibold bg-gray-50 text-black border-gray-300">
-                                        {key}
-                                      </td>
-                                      <td className="border p-3 border-gray-300 text-black">{text}</td>
-                                    </tr>
-                                  ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {question.q_type === "TABLE_COMPLETION" && (question.columns || question.table_structure) && (
-                      <div className="space-y-2">
-                        <div className="overflow-x-auto">
-                          <table className="w-full border text-base border-gray-300">
-                            <thead>
-                              <tr className="bg-gray-50">
-                                <th className="border p-3 text-left font-semibold text-gray-900 border-gray-300">
-                                  {question.table_structure?.headers?.[0] || "Item"}
-                                </th>
-                                {(question.columns || question.table_structure?.headers?.slice(1) || []).map(
-                                  (header, index) => (
-                                    <th
-                                      key={index}
-                                      className="border p-3 text-left font-semibold text-gray-900 border-gray-300"
-                                    >
-                                      {header}
-                                    </th>
-                                  ),
-                                )}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {question.rows && Array.isArray(question.rows)
-                                ? question.rows.map((row, rowIndex) => (
-                                    <tr key={rowIndex}>
-                                      <td className="border p-3 font-medium bg-gray-50 text-gray-900 border-gray-300">
-                                        {row.label || ""}
-                                      </td>
-                                      {(row.cells && Array.isArray(row.cells) ? row.cells : []).map(
-                                        (cell, cellIndex) => (
-                                          <td key={cellIndex} className="border p-3 border-gray-300">
-                                            {cell === "" || cell === "_" ? (
-                                              <div className="flex items-center gap-2">
-                                                <span className="bg-gray-700 text-white px-2 py-1 rounded text-xs font-medium">
-                                                  {getTableCellQuestionNumber(questionId, rowIndex, cellIndex)}
-                                                </span>
-                                                <Input
-                                                  value={answers[`${questionId}_table_${rowIndex}_${cellIndex}`] || ""}
-                                                  onChange={(e) =>
-                                                    handleAnswerChange(
-                                                      `${questionId}_table_${rowIndex}_${cellIndex}`,
-                                                      e.target.value,
-                                                    )
-                                                  }
-                                                  className="w-full text-sm bg-white border-gray-300 focus:border-gray-500"
-                                                  placeholder="Answer"
-                                                />
-                                              </div>
-                                            ) : (
-                                              <span className="text-gray-900">{cell}</span>
-                                            )}
-                                          </td>
-                                        ),
-                                      )}
-                                    </tr>
-                                  ))
-                                : question.table_structure?.rows?.map((row, rowIndex) => (
-                                    <tr key={rowIndex}>
-                                      <td className="border p-3 font-medium bg-gray-50 text-gray-900 border-gray-300">
-                                        {Object.values(row)[0]}
-                                      </td>
-                                      {Object.entries(row)
-                                        .slice(1)
-                                        .map(([key, value], cellIndex) => (
-                                          <td key={cellIndex} className="border p-3 border-gray-300">
-                                            {value === "" || value === "_" ? (
-                                              <div className="flex items-center gap-2">
-                                                <span className="bg-gray-700 text-white px-2 py-1 rounded text-xs font-medium">
-                                                  {getTableCellQuestionNumber(questionId, rowIndex, cellIndex)}
-                                                </span>
-                                                <Input
-                                                  value={answers[`${questionId}_table_${rowIndex}_${cellIndex}`] || ""}
-                                                  onChange={(e) =>
-                                                    handleAnswerChange(
-                                                      `${questionId}_table_${rowIndex}_${cellIndex}`,
-                                                      e.target.value,
-                                                    )
-                                                  }
-                                                  className="w-full text-sm bg-white border-gray-300 focus:border-gray-500"
-                                                  placeholder="Answer"
-                                                />
-                                              </div>
-                                            ) : (
-                                              <span className="text-gray-900">{value}</span>
-                                            )}
-                                          </td>
-                                        ))}
-                                    </tr>
-                                  ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {question.q_type === "MAP_LABELING" && question.photo && question.rows && (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                          {/* Map Image with Drop Zones */}
-                          <div className="lg:col-span-2">
-                            <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
-                              <img
-                                src={`${process.env.NEXT_PUBLIC_API_URL}/uploads/l_questions/${question.photo}`}
-                                alt="Map"
-                                className="w-full h-auto"
-                                draggable={false}
-                              />
-                              {/* Drop Zones */}
-                              {(() => {
-                                let rowsData: Record<string, any> = {}
-                                if (question.rows) {
-                                  if (typeof question.rows === "object") {
-                                    rowsData = question.rows
-                                  } else if (typeof question.rows === "string") {
-                                    try {
-                                      rowsData = JSON.parse(question.rows)
-                                    } catch (e) {
-                                      console.error("[v0] Failed to parse MAP_LABELING rows for rendering:", e)
-                                      console.error("[v0] Invalid rows data:", question.rows)
+                      {question.q_type === "MAP_LABELING" && question.photo && question.rows && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Map Image with Drop Zones */}
+                            <div className="lg:col-span-2">
+                              <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+                                <img
+                                  src={`${process.env.NEXT_PUBLIC_API_URL}/uploads/l_questions/${question.photo}`}
+                                  alt="Map"
+                                  className="w-full h-auto"
+                                  draggable={false}
+                                />
+                                {/* Drop Zones */}
+                                {(() => {
+                                  let rowsData: Record<string, any> = {}
+                                  if (question.rows) {
+                                    if (typeof question.rows === "object") {
+                                      rowsData = question.rows
+                                    } else if (typeof question.rows === "string") {
+                                      try {
+                                        rowsData = JSON.parse(question.rows)
+                                      } catch (e) {
+                                        console.error("[v0] Failed to parse MAP_LABELING rows for rendering:", e)
+                                        console.error("[v0] Invalid rows data:", question.rows)
+                                      }
                                     }
                                   }
-                                }
 
-                                const startQuestionNum = getGlobalQuestionNumber(question.id)
+                                  return Object.entries(rowsData).map(([position, coords]: [string, any], index) => {
+                                    const dropZoneQuestionId = `${question.id}_map_${position}`
+                                    const currentAnswer = answers[dropZoneQuestionId]
+                                    const questionNum = thisQuestionStartNum + index // Use sequential numbering
 
-                                return Object.entries(rowsData).map(([position, coords]: [string, any], index) => {
-                                  const dropZoneQuestionId = `${question.id}_map_${position}`
-                                  const currentAnswer = answers[dropZoneQuestionId]
-                                  const questionNum = startQuestionNum + index
+                                    let selectedOptionText = ""
+                                    if (currentAnswer) {
+                                      const selectedOption = optionsArray.find((opt) => opt.key === currentAnswer)
+                                      selectedOptionText = selectedOption?.text || ""
+                                    }
 
-                                  let selectedOptionText = ""
-                                  if (currentAnswer) {
-                                    const selectedOption = optionsArray.find((opt) => opt.key === currentAnswer)
-                                    selectedOptionText = selectedOption?.text || ""
+                                    return (
+                                      <div
+                                        key={position}
+                                        className="absolute"
+                                        style={{
+                                          left: coords.x,
+                                          top: coords.y,
+                                          transform: "translate(-50%, -50%)",
+                                        }}
+                                        onDragOver={(e) => {
+                                          e.preventDefault()
+                                          e.currentTarget.classList.add("bg-blue-200", "scale-110")
+                                        }}
+                                        onDragLeave={(e) => {
+                                          e.currentTarget.classList.remove("bg-blue-200", "scale-110")
+                                        }}
+                                        onDrop={(e) => {
+                                          e.preventDefault()
+                                          e.currentTarget.classList.remove("bg-blue-200", "scale-110")
+                                          const optionKey = e.dataTransfer.getData("text/plain")
+                                          if (optionKey) {
+                                            handleAnswerChange(dropZoneQuestionId, optionKey, dropZoneQuestionId)
+                                          }
+                                        }}
+                                      >
+                                        <div className="flex flex-col items-center gap-1">
+                                          <div
+                                            className={`min-w-[80px] px-3 py-2 rounded-lg border-2 flex flex-col items-center justify-center text-sm font-semibold shadow-lg transition-all ${
+                                              currentAnswer
+                                                ? "bg-white border-gray-500"
+                                                : "bg-white border-dashed border-gray-400 hover:border-gray-600 hover:scale-105"
+                                            }`}
+                                          >
+                                            <span className="text-gray-600 font-bold text-base">{questionNum}</span>
+                                            {currentAnswer && selectedOptionText && (
+                                              <span className="text-gray-700 text-xs mt-1 text-center">
+                                                {selectedOptionText}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )
+                                  })
+                                })()}
+                              </div>
+                            </div>
+
+                            {/* Options Panel */}
+                            <div className="lg:col-span-1">
+                              <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4">
+                                <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
+                                <div className="space-y-2">
+                                  {optionsArray.map((option) => (
+                                    <div
+                                      key={option.key}
+                                      draggable
+                                      onDragStart={(e) => {
+                                        e.dataTransfer.setData("text/plain", option.key)
+                                        e.currentTarget.classList.add("opacity-50")
+                                      }}
+                                      onDragEnd={(e) => {
+                                        e.currentTarget.classList.remove("opacity-50")
+                                      }}
+                                      className="bg-white border-2 border-gray-300 rounded-lg p-3 cursor-move hover:border-gray-600 hover:shadow-md transition-all"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="bg-gray-700 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+                                          {option.key}
+                                        </span>
+                                        <span className="text-gray-900 font-medium text-sm">{option.text}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {question.q_type === "FLOW_CHART" && question.choices && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Flow Chart */}
+                            <div className="lg:col-span-2">
+                              <div className="space-y-3">
+                                {Object.entries(question.choices).map(([stepNum, stepText]: [string, any], index) => {
+                                  const hasBlank = stepText.includes("__")
+                                  const flowChartQuestionId = question.id.toString()
+                                  const allAnswers = answers[flowChartQuestionId]
+                                  const currentAnswer =
+                                    allAnswers && typeof allAnswers === "object" && allAnswers[stepNum]
+                                      ? allAnswers[stepNum]
+                                      : ""
+
+                                  const stepQuestionNum = hasBlank
+                                    ? (() => {
+                                        const allQuestions = getAllQuestions()
+                                        const baseQuestionIndex = allQuestions.findIndex(
+                                          (q) => q.id.toString() === flowChartQuestionId,
+                                        )
+                                        let questionCounter = 1
+                                        for (let i = 0; i < baseQuestionIndex; i++) {
+                                          questionCounter += getQuestionCount(allQuestions[i])
+                                        }
+                                        let blankCounter = 0
+                                        const sortedSteps = Object.entries(question.choices || {}).sort(
+                                          ([a], [b]) => Number(a) - Number(b),
+                                        )
+                                        for (const [step, text] of sortedSteps) {
+                                          if (typeof text === "string" && text.includes("__")) {
+                                            if (step === stepNum) {
+                                              return questionCounter + blankCounter
+                                            }
+                                            blankCounter++
+                                          }
+                                        }
+                                        return questionCounter
+                                      })()
+                                    : null
+
+                                  let selectedOptionText = currentAnswer
+                                  if (currentAnswer && question.options && Array.isArray(question.options)) {
+                                    selectedOptionText = currentAnswer
                                   }
 
                                   return (
-                                    <div
-                                      key={position}
-                                      className="absolute"
-                                      style={{
-                                        left: coords.x,
-                                        top: coords.y,
-                                        transform: "translate(-50%, -50%)",
-                                      }}
-                                      onDragOver={(e) => {
-                                        e.preventDefault()
-                                        e.currentTarget.classList.add("bg-blue-200", "scale-110")
-                                      }}
-                                      onDragLeave={(e) => {
-                                        e.currentTarget.classList.remove("bg-blue-200", "scale-110")
-                                      }}
-                                      onDrop={(e) => {
-                                        e.preventDefault()
-                                        e.currentTarget.classList.remove("bg-blue-200", "scale-110")
-                                        const optionKey = e.dataTransfer.getData("text/plain")
-                                        if (optionKey) {
-                                          handleAnswerChange(dropZoneQuestionId, optionKey, dropZoneQuestionId)
-                                        }
-                                      }}
-                                    >
-                                      <div className="flex flex-col items-center gap-1">
-                                        <div
-                                          className={`min-w-[80px] px-3 py-2 rounded-lg border-2 flex flex-col items-center justify-center text-sm font-semibold shadow-lg transition-all ${
-                                            currentAnswer
-                                              ? "bg-white border-blue-500"
-                                              : "bg-white border-dashed border-gray-400 hover:border-blue-400 hover:scale-105"
-                                          }`}
-                                        >
-                                          <span className="text-blue-600 font-bold text-base">{questionNum}</span>
-                                          {currentAnswer && selectedOptionText && (
-                                            <span className="text-gray-700 text-xs mt-1 text-center">
-                                              {selectedOptionText}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )
-                                })
-                              })()}
-                            </div>
-                          </div>
-
-                          {/* Options Panel */}
-                          <div className="lg:col-span-1">
-                            <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4">
-                              <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
-                              <div className="space-y-2">
-                                {optionsArray.map((option) => (
-                                  <div
-                                    key={option.key}
-                                    draggable
-                                    onDragStart={(e) => {
-                                      e.dataTransfer.setData("text/plain", option.key)
-                                      e.currentTarget.classList.add("opacity-50")
-                                    }}
-                                    onDragEnd={(e) => {
-                                      e.currentTarget.classList.remove("opacity-50")
-                                    }}
-                                    className="bg-white border-2 border-gray-300 rounded-lg p-3 cursor-move hover:border-blue-400 hover:shadow-md transition-all"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <span className="bg-gray-700 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
-                                        {option.key}
-                                      </span>
-                                      <span className="text-gray-900 font-medium text-sm">{option.text}</span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {question.q_type === "FLOW_CHART" && question.choices && (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                          {/* Flow Chart */}
-                          <div className="lg:col-span-2">
-                            <div className="space-y-3">
-                              {Object.entries(question.choices).map(([stepNum, stepText]: [string, any], index) => {
-                                const hasBlank = stepText.includes("__")
-                                const flowChartQuestionId = question.id.toString()
-                                const allAnswers = answers[flowChartQuestionId]
-                                const currentAnswer =
-                                  allAnswers && typeof allAnswers === "object" && allAnswers[stepNum]
-                                    ? allAnswers[stepNum]
-                                    : ""
-                                // </CHANGE>
-
-                                const stepQuestionNum = hasBlank
-                                  ? getFlowChartStepQuestionNumber(question.id.toString(), stepNum)
-                                  : null
-
-                                let selectedOptionText = currentAnswer
-                                if (currentAnswer && question.options && Array.isArray(question.options)) {
-                                  selectedOptionText = currentAnswer
-                                }
-                                // </CHANGE>
-
-                                return (
-                                  <React.Fragment key={stepNum}>
-                                    <div className="border-2 border-gray-300 rounded-lg p-4 bg-white">
-                                      {hasBlank ? (
-                                        <div className="text-base text-gray-900 leading-relaxed">
-                                          {stepText.split("__").map((part: string, partIndex: number) => (
-                                            <React.Fragment key={partIndex}>
-                                              {part}
-                                              {partIndex < stepText.split("__").length - 1 && (
-                                                <span
-                                                  className={`inline-flex items-center gap-2 min-w-[140px] px-3 py-2 mx-1 border-2 border-dashed rounded transition-all ${
-                                                    currentAnswer
-                                                      ? "bg-blue-50 border-blue-500 cursor-pointer hover:bg-red-50 hover:border-red-500"
-                                                      : "bg-gray-50 border-gray-400 hover:border-blue-400"
-                                                  }`}
-                                                  onDragOver={(e) => {
-                                                    e.preventDefault()
-                                                    e.currentTarget.classList.add("bg-blue-100", "scale-105")
-                                                  }}
-                                                  onDragLeave={(e) => {
-                                                    e.currentTarget.classList.remove("bg-blue-100", "scale-105")
-                                                  }}
-                                                  onDrop={(e) => {
-                                                    e.preventDefault()
-                                                    e.currentTarget.classList.remove("bg-blue-100", "scale-105")
-                                                    const optionKey = e.dataTransfer.getData("text/plain")
-                                                    if (optionKey) {
-                                                      const fullQuestionId = `${question.id}_flow_${stepNum}`
-                                                      handleAnswerChange(flowChartQuestionId, optionKey, fullQuestionId)
-                                                      // </CHANGE>
-                                                    }
-                                                  }}
-                                                  onClick={() => {
-                                                    if (currentAnswer) {
-                                                      const fullQuestionId = `${question.id}_flow_${stepNum}`
-                                                      handleAnswerChange(flowChartQuestionId, null, fullQuestionId)
-                                                      // </CHANGE>
-                                                    }
-                                                  }}
-                                                  title={currentAnswer ? "Click to remove" : "Drag option here"}
-                                                >
-                                                  <span className="bg-gray-700 text-white px-2 py-1 rounded text-xs font-medium flex-shrink-0">
-                                                    {stepQuestionNum}
-                                                  </span>
-                                                  {currentAnswer ? (
-                                                    <span className="font-semibold text-blue-700">
-                                                      {selectedOptionText}
+                                    <React.Fragment key={stepNum}>
+                                      <div className="border-2 border-gray-300 rounded-lg p-4 bg-white">
+                                        {hasBlank ? (
+                                          <div className="text-base text-gray-900 leading-relaxed">
+                                            {stepText.split("__").map((part: string, partIndex: number) => (
+                                              <React.Fragment key={partIndex}>
+                                                {part}
+                                                {partIndex < stepText.split("__").length - 1 && (
+                                                  <span
+                                                    className={`inline-flex items-center gap-2 min-w-[140px] px-3 py-2 mx-1 border-2 border-dashed rounded transition-all ${
+                                                      currentAnswer
+                                                        ? "bg-gray-50 border-gray-500 cursor-pointer hover:bg-red-50 hover:border-red-500"
+                                                        : "bg-gray-50 border-gray-400 hover:border-gray-600"
+                                                    }`}
+                                                    onDragOver={(e) => {
+                                                      e.preventDefault()
+                                                      e.currentTarget.classList.add("bg-gray-100", "scale-105")
+                                                    }}
+                                                    onDragLeave={(e) => {
+                                                      e.currentTarget.classList.remove("bg-gray-100", "scale-105")
+                                                    }}
+                                                    onDrop={(e) => {
+                                                      e.preventDefault()
+                                                      e.currentTarget.classList.remove("bg-gray-100", "scale-105")
+                                                      const optionKey = e.dataTransfer.getData("text/plain")
+                                                      if (optionKey) {
+                                                        const fullQuestionId = `${question.id}_flow_${stepNum}`
+                                                        handleAnswerChange(
+                                                          flowChartQuestionId,
+                                                          optionKey,
+                                                          fullQuestionId,
+                                                        )
+                                                      }
+                                                    }}
+                                                    onClick={() => {
+                                                      if (currentAnswer) {
+                                                        const fullQuestionId = `${question.id}_flow_${stepNum}`
+                                                        handleAnswerChange(flowChartQuestionId, null, fullQuestionId)
+                                                      }
+                                                    }}
+                                                    title={currentAnswer ? "Click to remove" : "Drag option here"}
+                                                  >
+                                                    <span className="bg-gray-700 text-white px-2 py-1 rounded text-xs font-medium flex-shrink-0">
+                                                      {stepQuestionNum}
                                                     </span>
-                                                  ) : (
-                                                    <span className="text-gray-400 text-sm">Drop here</span>
-                                                  )}
-                                                </span>
-                                              )}
-                                            </React.Fragment>
-                                          ))}
+                                                    {currentAnswer ? (
+                                                      <span className="font-semibold text-gray-700">
+                                                        {selectedOptionText}
+                                                      </span>
+                                                    ) : (
+                                                      <span className="text-gray-400 text-sm">Drop here</span>
+                                                    )}
+                                                  </span>
+                                                )}
+                                              </React.Fragment>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-base text-gray-900 leading-relaxed">{stepText}</div>
+                                        )}
+                                      </div>
+                                      {index < Object.keys(question.choices).length - 1 && (
+                                        <div className="flex justify-center">
+                                          <div className="w-0.5 h-6 bg-gray-400"></div>
+                                          <div className="absolute w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-gray-400 mt-6"></div>
                                         </div>
-                                      ) : (
-                                        <div className="text-base text-gray-900 leading-relaxed">{stepText}</div>
                                       )}
-                                    </div>
-                                    {index < Object.keys(question.choices).length - 1 && (
-                                      <div className="flex justify-center">
-                                        <div className="w-0.5 h-6 bg-gray-400"></div>
-                                        <div className="absolute w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-gray-400 mt-6"></div>
-                                      </div>
-                                    )}
-                                  </React.Fragment>
-                                )
-                              })}
-                            </div>
-                          </div>
-
-                          {/* Options Panel */}
-                          <div className="lg:col-span-1">
-                            <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 sticky top-4">
-                              <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
-                              <div className="space-y-2">
-                                {question.options &&
-                                  Array.isArray(question.options) &&
-                                  question.options
-                                    .filter((optionKey: string) => {
-                                      const flowChartQuestionId = question.id.toString()
-                                      const allAnswers = answers[flowChartQuestionId]
-                                      if (!allAnswers || typeof allAnswers !== "object") return true
-
-                                      const isUsed = Object.values(allAnswers).includes(optionKey)
-                                      return !isUsed
-                                      // </CHANGE>
-                                    })
-                                    .map((optionKey: string) => (
-                                      <div
-                                        key={optionKey}
-                                        draggable
-                                        onDragStart={(e) => {
-                                          e.dataTransfer.setData("text/plain", optionKey)
-                                          e.currentTarget.classList.add("opacity-50")
-                                        }}
-                                        onDragEnd={(e) => {
-                                          e.currentTarget.classList.remove("opacity-50")
-                                        }}
-                                        className="bg-white border-2 border-gray-300 rounded-lg p-3 cursor-move hover:border-blue-400 hover:shadow-md transition-all active:scale-95"
-                                      >
-                                        <div className="flex items-center justify-center">
-                                          <span className="text-gray-900 font-medium text-base">{optionKey}</span>
-                                        </div>
-                                      </div>
-                                    ))}
-                              </div>
-                              {question.options &&
-                                Array.isArray(question.options) &&
-                                question.options.filter((optionKey: string) => {
-                                  const flowChartQuestionId = question.id.toString()
-                                  const allAnswers = answers[flowChartQuestionId]
-                                  if (!allAnswers || typeof allAnswers !== "object") return true
-                                  const isUsed = Object.values(allAnswers).includes(optionKey)
-                                  return !isUsed
-                                }).length === 0 && (
-                                  <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
-                                )}
-                              {/* </CHANGE> */}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {question.q_type === "NOTE_COMPLETION" && question.options && (
-                      <div className="space-y-4">
-                        {question.q_text && (
-                          <div
-                            className="text-base sm:text-lg mb-4 text-gray-900 font-medium leading-relaxed"
-                            dangerouslySetInnerHTML={{ __html: question.q_text }}
-                          />
-                        )}
-
-                        <div className="border-2 border-gray-900 rounded-lg p-6 bg-white">
-                          {(() => {
-                            const optionsText =
-                              typeof question.options === "string" ? question.options : JSON.stringify(question.options)
-
-                            const parts = optionsText.split(/(____+)/)
-                            let inputCounter = 0
-                            const startQuestionNum = getGlobalQuestionNumber(question.id)
-
-                            return (
-                              <div className="text-gray-900 leading-relaxed" style={{ fontSize: "16px" }}>
-                                {parts.map((part, index) => {
-                                  if (part.match(/^____+$/)) {
-                                    const currentInputIndex = inputCounter
-                                    inputCounter++
-                                    const questionNum = startQuestionNum + currentInputIndex
-                                    const inputId = `${question.id}_note_${currentInputIndex}`
-                                    const currentAnswer = answers[inputId] || ""
-
-                                    return (
-                                      <span key={index} className="inline-flex items-center mx-1">
-                                        <Input
-                                          value={currentAnswer}
-                                          onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
-                                          className="inline-block w-32 px-3 py-1.5 text-center text-sm bg-gray-50 border-2 border-gray-400 focus:border-gray-600 focus:bg-white rounded"
-                                          placeholder={questionNum.toString()}
-                                        />
-                                      </span>
-                                    )
-                                  } else {
-                                    return (
-                                      <span
-                                        key={index}
-                                        className="text-gray-900"
-                                        dangerouslySetInnerHTML={{ __html: part }}
-                                      />
-                                    )
-                                  }
+                                    </React.Fragment>
+                                  )
                                 })}
                               </div>
-                            )
-                          })()}
-                        </div>
-                      </div>
-                    )}
+                            </div>
 
-                    {![
-                      "TFNG",
-                      "TRUE_FALSE_NOT_GIVEN",
-                      "MCQ_SINGLE",
-                      "MCQ_MULTI",
-                      "SENTENCE_COMPLETION",
-                      "SENTENCE_ENDINGS",
-                      "MATCHING_INFORMATION",
-                      "TABLE_COMPLETION",
-                      "MAP_LABELING",
-                      "FLOW_CHART",
-                      "NOTE_COMPLETION",
-                    ].includes(question.q_type || "") && (
-                      <div className="space-y-2">
-                        <Input
-                          value={currentAnswer || ""}
-                          onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                          className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
-                          placeholder="Answer"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+                            {/* Options Panel */}
+                            <div className="lg:col-span-1">
+                              <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 sticky top-4">
+                                <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
+                                <div className="space-y-2">
+                                  {question.options &&
+                                    Array.isArray(question.options) &&
+                                    question.options
+                                      .filter((optionKey: string) => {
+                                        const flowChartQuestionId = question.id.toString()
+                                        const allAnswers = answers[flowChartQuestionId]
+                                        if (!allAnswers || typeof allAnswers !== "object") return true
+
+                                        const isUsed = Object.values(allAnswers).includes(optionKey)
+                                        return !isUsed
+                                      })
+                                      .map((optionKey: string) => (
+                                        <div
+                                          key={optionKey}
+                                          draggable
+                                          onDragStart={(e) => {
+                                            e.dataTransfer.setData("text/plain", optionKey)
+                                            e.currentTarget.classList.add("opacity-50")
+                                          }}
+                                          onDragEnd={(e) => {
+                                            e.currentTarget.classList.remove("opacity-50")
+                                          }}
+                                          className="bg-white border-2 border-gray-300 rounded-lg p-3 cursor-move hover:border-gray-600 hover:shadow-md transition-all active:scale-95"
+                                        >
+                                          <div className="flex items-center justify-center">
+                                            <span className="text-gray-900 font-medium text-base">{optionKey}</span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                </div>
+                                {question.options &&
+                                  Array.isArray(question.options) &&
+                                  question.options.filter((optionKey: string) => {
+                                    const flowChartQuestionId = question.id.toString()
+                                    const allAnswers = answers[flowChartQuestionId]
+                                    if (!allAnswers || typeof allAnswers !== "object") return true
+                                    const isUsed = Object.values(allAnswers).includes(optionKey)
+                                    return !isUsed
+                                  }).length === 0 && (
+                                    <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
+                                  )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {question.q_type === "NOTE_COMPLETION" && question.options && (
+                        <div className="space-y-4">
+                          <div className="flex flex-row items-start gap-3 mb-4">
+                            <div className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0">
+                              {questionStartNum}
+                              {questionCount > 1 && ` - ${questionEndNum}`}
+                            </div>
+
+                            {question.q_text && (
+                              <div
+                                className="text-base sm:text-lg text-gray-900 font-medium leading-relaxed flex-1"
+                                dangerouslySetInnerHTML={{ __html: question.q_text }}
+                              />
+                            )}
+                          </div>
+
+                          <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-6">
+                            {(() => {
+                              const optionsText =
+                                typeof question.options === "string"
+                                  ? question.options
+                                  : JSON.stringify(question.options)
+
+                              const parts = optionsText.split(/(____+)/)
+                              let currentInputIndex = 0
+
+                              return parts.map((part, index) => {
+                                if (part.match(/____+/)) {
+                                  const questionNum = thisQuestionStartNum + currentInputIndex
+                                  const inputId = `${question.id}_note_${currentInputIndex}`
+                                  const currentAnswer = answers[inputId] || ""
+                                  currentInputIndex++
+
+                                  return (
+                                    <span key={index} className="inline-flex items-center mx-1">
+                                      <Input
+                                        value={currentAnswer}
+                                        onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
+                                        className="inline-block w-32 px-3 py-1.5 text-center text-sm bg-gray-50 border-2 border-gray-400 focus:border-gray-600 focus:bg-white rounded"
+                                        placeholder={questionNum.toString()}
+                                      />
+                                    </span>
+                                  )
+                                } else {
+                                  return (
+                                    <span
+                                      key={index}
+                                      className="text-gray-900"
+                                      dangerouslySetInnerHTML={{ __html: part }}
+                                    />
+                                  )
+                                }
+                              })
+                            })()}
+                          </div>
+                        </div>
+                      )}
+
+                      {![
+                        "TFNG",
+                        "TRUE_FALSE_NOT_GIVEN",
+                        "MCQ_SINGLE",
+                        "MCQ_MULTI",
+                        "SENTENCE_COMPLETION",
+                        "SENTENCE_ENDINGS",
+                        "MATCHING_INFORMATION",
+                        "TABLE_COMPLETION",
+                        "MAP_LABELING",
+                        "FLOW_CHART",
+                        "NOTE_COMPLETION",
+                      ].includes(question.q_type || "") && (
+                        <div className="space-y-2">
+                          <Input
+                            value={currentAnswer || ""}
+                            onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                            className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
+                            placeholder="Answer"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              })()}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 sm:px-6 py-3 sm:py-4 shadow-lg z-50">
+      <div
+        className={`fixed bottom-0 left-0 right-0 ${getNavigationColorClasses()} border-t px-4 sm:px-6 py-3 sm:py-4 shadow-lg z-50`}
+      >
         <div className="flex flex-col sm:flex-row items-center justify-between max-w-6xl mx-auto gap-4">
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => currentPart > 1 && switchToPart(currentPart - 1)}
-              disabled={currentPart <= 1}
-              className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-800 text-white rounded flex items-center justify-center disabled:opacity-50 hover:bg-gray-700 transition-colors"
+              onClick={goToPreviousQuestion}
+              disabled={currentQuestionIndex === 0}
+              className={`w-8 h-8 sm:w-10 sm:h-10 rounded flex items-center justify-center disabled:opacity-50 transition-colors ${
+                isWarningMode ? "bg-red-700 hover:bg-red-800" : "bg-gray-800 text-white hover:bg-gray-700"
+              }`}
             >
               ←
             </button>
             <button
-              onClick={() => currentPart < 4 && switchToPart(currentPart + 1)}
-              disabled={currentPart >= 4}
-              className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-800 text-white rounded flex items-center justify-center disabled:opacity-50 hover:bg-gray-700 transition-colors"
+              onClick={goToNextQuestion}
+              disabled={currentQuestionIndex === allQuestions.length - 1}
+              className={`w-8 h-8 sm:w-10 sm:h-10 rounded flex items-center justify-center disabled:opacity-50 transition-colors ${
+                isWarningMode ? "bg-red-700 hover:bg-red-800" : "bg-gray-800 text-white hover:bg-gray-700"
+              }`}
             >
               →
             </button>
@@ -1858,18 +2479,7 @@ export default function ListeningTestPage() {
           <div className="flex items-center space-x-8 overflow-x-auto max-w-full">
             <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
               {allParts.map((part) => {
-                const partQuestions = getQuestionsByPart(part.partNumber)
-                let firstQuestionNum = 0
-                let lastQuestionNum = 0
-
-                if (partQuestions.length > 0) {
-                  firstQuestionNum = getGlobalQuestionNumber(partQuestions[0].id)
-                  lastQuestionNum = firstQuestionNum
-                  partQuestions.forEach((q) => {
-                    lastQuestionNum += getQuestionCount(q) - 1
-                  })
-                }
-
+                const range = getPartQuestionRange(part.partNumber)
                 const allPartQuestionsAnswered =
                   part.answeredQuestions === part.totalQuestions && part.totalQuestions > 0
 
@@ -1882,61 +2492,61 @@ export default function ListeningTestPage() {
                         ? "bg-green-500 text-white hover:bg-green-600"
                         : "bg-white text-gray-900 hover:bg-gray-50"
                     } ${currentPart === part.partNumber ? "ring-2 ring-gray-600 ring-offset-1" : ""}`}
-                    title={`Questions ${firstQuestionNum}–${lastQuestionNum}`}
+                    title={`Questions ${range.start}–${range.end}`}
                   >
                     Part {part.partNumber}
                     <span className="block text-[10px] text-gray-500">
-                      {firstQuestionNum}–{lastQuestionNum}
+                      {range.start}–{range.end}
                     </span>
                   </button>
                 )
-                // </CHANGE>
               })}
             </div>
 
             <div className="flex items-center space-x-1 flex-wrap justify-center">
               {(() => {
                 const questionButtons: ReactElement[] = []
-                let currentQuestionNum = 1
+                const partQuestions = getQuestionsByPart(currentPart)
+                const baseNumber = getPartQuestionRange(currentPart).start
 
-                allQuestions.forEach((question) => {
+                partQuestions.forEach((question, indexInPart) => {
                   const questionCount = getQuestionCount(question)
-                  const isCurrentPart = question.part === `PART${currentPart}`
-
-                  // For questions with multiple sub-questions (like FLOW_CHART, TABLE, etc.)
                   for (let i = 0; i < questionCount; i++) {
-                    const questionNum = currentQuestionNum + i
-                    const isAnswered = !!answers[question.id.toString()]
+                    const questionNum = baseNumber + indexInPart + i
+                    const isAnswered = isSubQuestionAnswered(question, i)
 
                     questionButtons.push(
                       <button
                         key={`${question.id}_${i}`}
                         onClick={() => {
-                          const questionPart = Number.parseInt(question.part.replace("PART", ""))
-                          if (questionPart !== currentPart) {
-                            switchToPart(questionPart)
+                          // Scroll to the specific question part
+                          const element = questionRefs.current[question.id]
+                          if (element) {
+                            element.scrollIntoView({ behavior: "smooth", block: "center" })
                           }
-                          setTimeout(() => jumpToQuestion(question.id), 100)
+                          // Update currentQuestionIndex based on the clicked question number
+                          const allQuestionsForIndex = getAllQuestions()
+                          const clickedQuestionIndex = allQuestionsForIndex.findIndex(
+                            (q, idx) => q.id === question.id && idx === indexInPart,
+                          )
+                          if (clickedQuestionIndex !== -1) {
+                            setCurrentQuestionIndex(clickedQuestionIndex)
+                          }
                         }}
                         className={`w-6 h-6 sm:w-8 sm:h-8 text-xs font-medium rounded transition-all ${
                           isAnswered
                             ? "bg-green-500 text-white hover:bg-green-600"
-                            : isCurrentPart
-                              ? "bg-gray-500 text-white hover:bg-gray-600"
-                              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                        } ${isCurrentPart ? "ring-2 ring-gray-600 ring-offset-1" : ""}`}
-                        title={`Question ${questionNum} - ${question.part}`}
+                            : "bg-gray-500 text-white hover:bg-gray-600"
+                        }`}
+                        title={`Question ${questionNum}`}
                       >
                         {questionNum}
                       </button>,
                     )
                   }
-
-                  currentQuestionNum += questionCount
                 })
 
                 return questionButtons
-                // </CHANGE>
               })()}
             </div>
           </div>
@@ -1945,14 +2555,39 @@ export default function ListeningTestPage() {
             <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="px-4 sm:px-6 py-2 bg-gray-800 text-white rounded-lg text-sm sm:text-base font-medium hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className={`px-4 sm:px-6 py-2 rounded-lg text-sm sm:text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                isWarningMode ? "bg-red-600 text-white hover:bg-red-700" : "bg-gray-800 text-white hover:bg-gray-700"
+              }`}
             >
               {isSubmitting ? "Submitting..." : "Submit Test"}
             </button>
           </div>
         </div>
       </div>
-      {/* </CHANGE> */}
+
+      <div className="fixed bottom-6 right-6 flex items-center gap-3 z-50">
+        <button
+          onClick={goToNextQuestion}
+          disabled={currentQuestionIndex === getAllQuestions().length - 1}
+          className="w-12 h-12 bg-black hover:bg-gray-900 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg flex items-center justify-center transition-colors shadow-lg"
+          title="Next Question"
+        >
+          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        <button
+          onClick={() => handleSubmit(false)}
+          disabled={isSubmitting}
+          className="w-12 h-12 bg-white hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg flex items-center justify-center transition-colors shadow-lg border-2 border-gray-300"
+          title="Submit Test"
+        >
+          <svg className="w-6 h-6 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </button>
+      </div>
     </div>
   )
 }
