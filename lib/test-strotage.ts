@@ -74,7 +74,7 @@ export function countWords(text: string): number {
 
 export async function checkWritingCompletion(userId: string, examId: string): Promise<boolean> {
   try {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
     const response = await fetch(`${API_BASE_URL}/users/${userId}`)
 
     if (!response.ok) return false
@@ -117,7 +117,7 @@ async function checkSectionCompletionAPI(
   section: "reading" | "listening",
 ): Promise<boolean> {
   try {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
     const response = await fetch(`${API_BASE_URL}/users/${userId}`)
 
     if (!response.ok) return false

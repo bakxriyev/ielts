@@ -9,12 +9,13 @@ import { Badge } from "@/components/ui/badge"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { PasswordModal } from "@/components/password-modal"
 import { CompletionModal } from "@/components/completion-modal"
-import { BookOpen, Headphones, PenTool, Play, AlertTriangle } from "lucide-react"
+import { BookOpen, Headphones, PenTool, Play, AlertTriangle, ArrowLeft } from "lucide-react"
 import { getStoredUser } from "@/lib/auth"
 import { useCustomAlert } from "../../../components/custom-allert"
 import { checkSectionCompletion } from "../../../lib/completed-cheker"
-import { checkWritingCompletion } from "../../../lib/test-strotage"
+import { checkWritingCompletion } from "@/lib/test-strotage"
 import Image from "next/image"
+import Link from "next/link"
 
 interface ExamSection {
   id: string
@@ -34,6 +35,7 @@ interface ExamData {
   description: string
   duration: string
   photo: string | null
+  is_active: boolean
   listenings: Array<{
     id: string
     title: string
@@ -123,15 +125,17 @@ const MockTestPage = () => {
   useEffect(() => {
     if (examData) {
       const examId = params.id as string
-      const actualPassword = examData.password 
+      const actualPassword = examData.password
       const isPasswordValid = checkPasswordInStorage(examId, actualPassword)
 
-      if (isPasswordValid) {
-        setIsAuthenticated(true)
-        setShowPasswordModal(false)
-      } else {
+      // Only show password modal if is_active is true AND password is not valid
+      if (examData.is_active && !isPasswordValid) {
         setShowPasswordModal(true)
         setIsAuthenticated(false)
+      } else {
+        // If is_active is false OR password is valid, skip password modal
+        setShowPasswordModal(false)
+        setIsAuthenticated(true)
       }
     }
   }, [examData, params.id])
@@ -173,7 +177,7 @@ const MockTestPage = () => {
     try {
       setIsLoading(true)
 
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
       const response = await fetch(`${API_BASE_URL}/exams/${params.id}`)
 
       if (!response.ok) {
@@ -196,8 +200,9 @@ const MockTestPage = () => {
     const sections: ExamSection[] = []
 
     if (data.readings && data.readings.length > 0) {
+      const readingId = data.readings[0].id // Use the actual reading ID
       sections.push({
-        id: `reading_${data.id}`,
+        id: readingId, // Changed from `reading_${data.id}` to actual reading ID
         name: "Reading",
         description: "Academic Reading Test",
         duration: "60 minutes",
@@ -209,8 +214,9 @@ const MockTestPage = () => {
     }
 
     if (data.listenings && data.listenings.length > 0) {
+      const listeningId = data.listenings[0].id // Use the actual listening ID
       sections.push({
-        id: `listening_${data.id}`,
+        id: listeningId, // Changed from `listening_${data.id}` to actual listening ID
         name: "Listening",
         description: "Academic Listening Test",
         duration: "30 minutes",
@@ -222,8 +228,9 @@ const MockTestPage = () => {
     }
 
     if (data.writings && data.writings.length > 0) {
+      const writingId = data.writings[0].id // Use the actual writing ID
       sections.push({
-        id: `writing_${data.id}`,
+        id: writingId, // Changed from `writing_${data.id}` to actual writing ID
         name: "Writing",
         description: "Academic Writing Test",
         duration: "60 minutes",
@@ -250,7 +257,7 @@ const MockTestPage = () => {
     router.push("/dashboard")
   }
 
-  const handleStartSection = (sectionName: string, isCompleted: boolean) => {
+  const handleStartSection = (sectionId: string, sectionName: string, isCompleted: boolean) => {
     if (isCompleted) {
       showAlert({
         title: "Section Completed",
@@ -260,7 +267,8 @@ const MockTestPage = () => {
       return
     }
 
-    router.push(`/test/${sectionName.toLowerCase()}/${params.id}`)
+    // Use section ID instead of mock ID
+    router.push(`/test/${sectionName.toLowerCase()}/${sectionId}`)
   }
 
   const getSectionImage = (sectionName: string) => {
@@ -309,12 +317,13 @@ const MockTestPage = () => {
       <AlertComponent />
 
       <PasswordModal
-        isOpen={!isAuthenticated}
+        isOpen={showPasswordModal && !isAuthenticated}
         onClose={handlePasswordClose}
         onSuccess={handlePasswordSuccess}
-        correctPassword={examData?.password }
-        examTitle={examData?.title }
+        correctPassword={examData?.password}
+        examTitle={examData?.title}
       />
+      {/* */}
 
       <CompletionModal isOpen={showCompletionModal} onClose={() => setShowCompletionModal(false)} />
 
@@ -322,6 +331,14 @@ const MockTestPage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-4">
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-1 sm:gap-2 text-blue-300 hover:text-white transition-colors text-sm sm:text-base"
+              >
+                <ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Back to Dashboard</span>
+                <span className="sm:hidden">Back</span>
+              </Link>
               <div className="flex items-center gap-2 sm:gap-3">
                 <Image
                   src="/realieltsexam-logo.png"
@@ -368,6 +385,7 @@ const MockTestPage = () => {
                   {getStoredUser()?.email && (
                     <>
                       <span className="mx-2">•</span>
+                      <span className="font-medium">Email:</span> {getStoredUser()?.email}
                     </>
                   )}
                 </div>
@@ -389,7 +407,7 @@ const MockTestPage = () => {
                       : "bg-slate-800/50 hover:bg-slate-800/60"
                   }`}
                   style={{ animationDelay: `${index * 100}ms` }}
-                  onClick={() => handleStartSection(section.name, section.isCompleted || false)}
+                  onClick={() => handleStartSection(section.id, section.name, section.isCompleted || false)}
                 >
                   <CardContent className="p-0">
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center">
@@ -435,8 +453,17 @@ const MockTestPage = () => {
                                   <Badge className="bg-green-600 text-white self-start">Completed</Badge>
                                 )}
                               </div>
-
-                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs sm:text-sm text-blue-400"></div>
+                              <div className="text-blue-300 mb-3 text-base sm:text-lg">{section.description}</div>
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs sm:text-sm text-blue-400">
+                                <span className="flex items-center gap-2">
+                                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                  {section.parts} {section.parts === 1 ? "Part" : "Parts"}
+                                </span>
+                                <span className="flex items-center gap-2">
+                                  <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
+                                  {section.duration}
+                                </span>
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center justify-center sm:justify-end">
@@ -478,7 +505,7 @@ const MockTestPage = () => {
               <span className="text-blue-300 font-medium text-sm sm:text-base">REALIELTSEXAM</span>
             </div>
             <div className="text-xs sm:text-sm text-blue-400 text-center">
-              © 2025 REALIELTSEXAM. All rights reserved.
+              © 2024 REALIELTSEXAM. All rights reserved.
             </div>
           </div>
         </div>

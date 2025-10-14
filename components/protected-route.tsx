@@ -22,7 +22,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       const hasUser = user || storedUser
 
       if (!hasUser) {
-        router.push("/login")
+        router.push("/join")
         return
       }
       setIsLoading(false)

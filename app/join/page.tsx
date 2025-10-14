@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import type React from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,6 +24,7 @@ export default function JoinPage() {
     localStorage.clear()
     console.log("[v0] Cleared all localStorage data on join page entry")
   }, [])
+  // </CHANGE>
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,6 +67,7 @@ export default function JoinPage() {
       setUser(userData)
 
       setStep("mock") // Move to next step
+      // </CHANGE>
     } catch (err) {
       console.error("[v0] Error logging in:", err)
       setError("Failed to connect to server. Please try again later.")
@@ -101,7 +104,13 @@ export default function JoinPage() {
         <div className="w-full max-w-md">
           <div className="text-center mb-6 sm:mb-8">
             <div className="flex items-center justify-center gap-3 sm:gap-6 mb-4 sm:mb-6">
-              <Image src="/realieltsexam-logo.png" alt="REALIELTSEXAM" width={120} height={40} className="h-8 sm:h-10" />
+              <Image
+                src="/realieltsexam-logo.png"
+                alt="REALIELTSEXAM"
+                width={120}
+                height={40}
+                className="h-8 sm:h-10"
+              />
               <div className="w-px h-6 sm:h-8 bg-white/30"></div>
               <Image src="/ielts-logo.png" alt="IELTS" width={100} height={40} className="h-6 sm:h-8" />
             </div>
@@ -188,6 +197,7 @@ export default function JoinPage() {
                   </Button>
                 </form>
               )}
+              {/* </CHANGE> */}
             </CardContent>
           </Card>
         </div>

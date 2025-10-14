@@ -144,24 +144,27 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   const [isHighlightedText, setIsHighlightedText] = useState(false)
   const passageRef = useRef<HTMLDivElement>(null)
 
-   const getUserId = () => {
-      try {
-        const userData = localStorage.getItem("user")
-        if (userData) {
-          const user = JSON.parse(userData)
-          return user.id ? String(user.id) : "null"
-        }
-      } catch (error) {
-        console.error("[v0] Error parsing user data from localStorage:", error)
+  const getUserId = () => {
+    try {
+      const userData = localStorage.getItem("user")
+      if (userData) {
+        const user = JSON.parse(userData)
+        return user.user?.id ? String(user.user.id) : "1"
       }
-      return "1" // fallback to "1" as string if no user data found
+    } catch (error) {
+      console.error("[v0] Error parsing user data from localStorage:", error)
     }
-  
-    const [userId, setUserId] = useState<string>("null")
+    return "1"
+  }
 
-    useEffect(() => {
-        setUserId(getUserId())
-      }, [examId])
+  const [userId, setUserId] = useState<string>(() => getUserId())
+
+  useEffect(() => {
+    const currentUserId = getUserId()
+    if (currentUserId !== userId) {
+      setUserId(currentUserId)
+    }
+  }, [examId])
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
@@ -540,7 +543,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       )
 
       answersArray.push({
-        userId: String(user?.id) || "1",
+        userId: getUserId(),
         questionId: Number.parseInt(questionGroupId),
         r_questionsID: Number.parseInt(rQuestionId),
         examId: Number.parseInt(examId),
@@ -571,7 +574,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         )
 
         answersArray.push({
-          userId: String(user?.id) || "1",
+          userId: getUserId(),
           questionId: matchingQuestionGroup?.id || Number.parseInt(questionGroupId),
           r_questionsID: matchingQuestion.id,
           examId: Number.parseInt(examId),
@@ -598,7 +601,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       })
 
       answersArray.push({
-        userId: String(user?.id) || "1",
+        userId: getUserId(),
         questionId: Number.parseInt(questionGroupId),
         r_questionsID: Number.parseInt(rQuestionId),
         examId: Number.parseInt(examId),
@@ -625,7 +628,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       answer.forEach((selectedOption) => {
         answersArray.push({
-          userId: String(user?.id) || "1",
+          userId: getUserId(),
           questionId: Number.parseInt(questionGroupId),
           r_questionsID: Number.parseInt(rQuestionId),
           examId: Number.parseInt(examId),
@@ -645,7 +648,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           ),
       )
       answersArray.push({
-        userId: String(user?.id) || "1",
+        userId: getUserId(),
         questionId: Number.parseInt(questionGroupId),
         r_questionsID: Number.parseInt(rQuestionId),
         examId: Number.parseInt(examId),
@@ -665,7 +668,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       )
 
       answersArray.push({
-        userId: String(user?.id) || "1",
+        userId: getUserId(),
         questionId: Number.parseInt(questionGroupId),
         r_questionsID: Number.parseInt(rQuestionId),
         examId: Number.parseInt(examId),
@@ -1387,7 +1390,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         <div className="text-center max-w-md mx-auto p-8">
           <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-4" />
           <h1 className={`text-2xl font-bold mb-4 ${colorStyles.text}`}>Test Not Found</h1>
-          
         </div>
       </div>
     )
@@ -1822,7 +1824,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       </tbody>
                     </table>
                   </div>
-                 
                 </div>
               )}
 
@@ -1840,9 +1841,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           </th>
                           <th
                             className={`border p-3 text-left font-semibold ${colorStyles.text} ${colorStyles.border}`}
-                          >
-                            
-                          </th>
+                          ></th>
                           {Object.keys((question as any).choices).map((choiceKey) => (
                             <th
                               key={choiceKey}
@@ -2213,7 +2212,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       <div className={`text-sm font-semibold mb-2 text-gray-500`}>
                         Questions {range.start === range.end ? range.start : `${range.start}–${range.end}`}
                       </div>
-                     
                     </div>
 
                     <h3 className={`text-lg font-bold ${colorStyles.text} mb-4`}>List of Headings</h3>
