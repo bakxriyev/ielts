@@ -111,13 +111,13 @@ export async function checkAllSectionsCompletedAPI(userId: string, examId: strin
   }
 }
 
-async function checkSectionCompletionAPI(
+export async function checkSectionCompletionAPI(
   userId: string,
   examId: string,
   section: "reading" | "listening",
 ): Promise<boolean> {
   try {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
     const response = await fetch(`${API_BASE_URL}/users/${userId}`)
 
     if (!response.ok) return false
@@ -125,7 +125,9 @@ async function checkSectionCompletionAPI(
     const userData = await response.json()
     const sectionAnswers = userData[`${section}Answers`] || []
 
-    return sectionAnswers.some((answer: any) => answer.examId.toString() === examId.toString())
+    const hasAnswers = sectionAnswers.some((answer: any) => answer.examId.toString() === examId.toString())
+    console.log(`[v0] ${section} completion check: ${hasAnswers}, found ${sectionAnswers.length} ${section} answers`)
+    return hasAnswers
   } catch (error) {
     console.error(`Failed to check ${section} completion:`, error)
     return false

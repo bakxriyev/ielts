@@ -53,9 +53,7 @@ export default function TestPage() {
         },
       })
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch test data")
-      }
+      
 
       const data = await response.json()
 
@@ -204,16 +202,6 @@ export default function TestPage() {
             showContinueButton={true}
             autoPlay={true}
           />
-        </div>
-
-        <div className="fixed bottom-6 right-6 z-50">
-          <Button
-            variant="outline"
-            onClick={handleSkipVideo}
-            className="bg-slate-800/90 backdrop-blur-sm border-blue-600 text-blue-300 hover:bg-blue-600 hover:text-white"
-          >
-            Skip Instructions
-          </Button>
         </div>
       </div>
     )

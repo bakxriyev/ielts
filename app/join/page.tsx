@@ -64,7 +64,7 @@ export default function JoinPage() {
 
       localStorage.setItem("user", JSON.stringify(userData))
       localStorage.setItem("token", `join_token_${userData.id}`)
-      setUser(userData)
+      // setUser(userData)
 
       setStep("mock") // Move to next step
       // </CHANGE>

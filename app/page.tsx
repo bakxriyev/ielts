@@ -58,14 +58,14 @@ export default function HomePage() {
           {isMenuOpen && (
             <div className="md:hidden py-4 border-t border-blue-500/20">
               <div className="flex flex-col gap-3">
-                <Link href="/login">
+                <Link href="/join">
                   <Button variant="ghost" className="w-full justify-start text-slate-300 hover:text-blue-400">
-                    Login
+                    Join
                   </Button>
                 </Link>
-                <Link href="/login">
+                {/* <Link href="/login">
                   <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">Register</Button>
-                </Link>
+                </Link> */}
               </div>
             </div>
           )}

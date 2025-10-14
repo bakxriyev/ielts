@@ -6,19 +6,21 @@ import { useEffect, useState, useRef, type ReactElement } from "react" // Import
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { markSectionCompleted } from "../../../../../lib/test-strotage"
+import { markSectionCompleted, areAllSectionsCompleted } from "../../../../../lib/test-strotage"
 import { Volume2, VolumeX, Wifi, Bell, Menu, X } from "lucide-react"
 import { useCustomAlert } from "../../../../../components/custom-allert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Slider } from "@/components/ui/slider"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
+import { CompletionModal } from "../../../../../components/completion-modal"
 
 interface LQuestion {
   id: number
   listening_questions_id: number
   q_type: string
   q_text: string
+  instruction?: string // Added instruction field
   options?: any
   correct_answers?: string | string[]
   columns?: any
@@ -29,6 +31,7 @@ interface LQuestion {
   photo?: string | null
   createdAt: string
   updatedAt: string
+  groupId: string // Added groupId
 }
 
 interface Question {
@@ -80,12 +83,14 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
   const [textSize, setTextSize] = useState(16)
   const [colorMode, setColorMode] = useState<"default" | "night" | "yellow">("default")
 
+  const [showCompletionModal, setShowCompletionModal] = useState(false)
+
   const getUserId = () => {
     try {
       const userData = localStorage.getItem("user")
       if (userData) {
         const user = JSON.parse(userData)
-        return user.id ? String(user.id) : "1"
+        return user.id ? String(user.id) : "null"
       }
     } catch (error) {
       console.error("[v0] Error parsing user data from localStorage:", error)
@@ -855,18 +860,25 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
       // Clear localStorage after successful submission
       localStorage.removeItem(answersKey)
-      markSectionCompleted(examId, "listening")
 
-      showAlert({
-        title: "Muvaffaqiyatli!",
-        description: "Javoblaringiz muvaffaqiyatli yuborildi.",
-        type: "success",
-        confirmText: "OK",
-        showCancel: false,
-        onConfirm: () => {
-          router.push(`/mock/${examId}`)
-        },
-      })
+      markSectionCompleted(examId, "listening")
+      console.log("[v0] Marked listening section as completed")
+
+      if (areAllSectionsCompleted(examId)) {
+        console.log("[v0] All sections completed! Showing celebration modal")
+        setShowCompletionModal(true)
+      } else {
+        showAlert({
+          title: "Muvaffaqiyatli!",
+          description: "Javoblaringiz muvaffaqiyatli yuborildi.",
+          type: "success",
+          confirmText: "OK",
+          showCancel: false,
+          onConfirm: () => {
+            router.push(`/mock/${examId}`)
+          },
+        })
+      }
     } catch (error) {
       console.error("[v0] Failed to submit listening test:", error)
       showAlert({
@@ -887,7 +899,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         questionGroup.l_questions.map((lq) => ({
           ...lq,
           part: questionGroup.part,
-          groupId: questionGroup.id,
+          groupId: questionGroup.id, // Assign groupId to each l_question
         })),
       ) || []
     )
@@ -1643,362 +1655,385 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                 return currentPartData ? (
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                     <h4 className="font-semibold text-gray-900 mb-2">{currentPartData.title}</h4>
-                    <p className="text-gray-800">{currentPartData.instruction}</p>
                   </div>
                 ) : null
               })()}
             </div>
           </div>
 
-          <div className="mb-6">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-6">
-              Questions {(() => {
-                const range = getPartQuestionRange(currentPart)
-                return `${range.start}–${range.end}`
-              })()}
-            </h3>
+          <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 mt-6">
+            Questions {(() => {
+              const range = getPartQuestionRange(currentPart)
+              return `${range.start}–${range.end}`
+            })()}
+          </h3>
 
-            <div className="space-y-6">
-              {(() => {
-                const partRange = getPartQuestionRange(currentPart)
-                let sequentialQuestionNumber = partRange.start
+          <div className="space-y-6">
+            {(() => {
+              const partRange = getPartQuestionRange(currentPart)
+              let sequentialQuestionNumber = partRange.start
+              const shownGroupInstructions = new Set<string>()
 
-                return currentPartQuestions.map((question, indexInPart) => {
-                  const questionId = question.id.toString()
-                  const questionType = getQuestionType(questionId)
+              return currentPartQuestions.map((question, indexInPart) => {
+                const questionId = question.id.toString()
+                const questionType = getQuestionType(questionId)
 
-                  let currentAnswer: any
+                const isFirstInGroup = !shownGroupInstructions.has(question.groupId)
+                if (isFirstInGroup) {
+                  shownGroupInstructions.add(question.groupId)
+                }
 
-                  if (questionType === "TABLE_COMPLETION") {
-                    const tableAnswersKey = `${questionId}_answer`
-                    currentAnswer = answers[tableAnswersKey] || {}
-                  } else {
-                    currentAnswer = answers[questionId] || ""
+                const questionGroup = testData?.questions.find((qg) => qg.id === question.groupId)
+
+                let currentAnswer: any
+
+                if (questionType === "TABLE_COMPLETION") {
+                  const tableAnswersKey = `${questionId}_answer`
+                  currentAnswer = answers[tableAnswersKey] || {}
+                } else {
+                  currentAnswer = answers[questionId] || ""
+                }
+
+                // Calculate how many inputs this question has
+                const questionCount = getQuestionCount(question)
+                const questionStartNum = sequentialQuestionNumber
+                const questionEndNum = sequentialQuestionNumber + questionCount - 1
+
+                // Store the starting number for this question (for nested rendering)
+                const thisQuestionStartNum = sequentialQuestionNumber
+
+                // Increment the counter for the next question
+                sequentialQuestionNumber += questionCount
+
+                let parsedOptions = question.options
+                if (typeof question.options === "string") {
+                  try {
+                    parsedOptions = JSON.parse(question.options)
+                  } catch (e) {
+                    parsedOptions = null
                   }
+                }
 
-                  // Calculate how many inputs this question has
-                  const questionCount = getQuestionCount(question)
-                  const questionStartNum = sequentialQuestionNumber
-                  const questionEndNum = sequentialQuestionNumber + questionCount - 1
+                let optionsArray: { key: string; text: string }[] = []
 
-                  // Store the starting number for this question (for nested rendering)
-                  const thisQuestionStartNum = sequentialQuestionNumber
+                if (Array.isArray(parsedOptions)) {
+                  optionsArray = parsedOptions.map((option: any) => ({
+                    key: option.key || option.value || "",
+                    text: option.text || option.label || option.value || "",
+                  }))
+                } else if (parsedOptions && typeof parsedOptions === "object") {
+                  optionsArray = Object.entries(parsedOptions).map(([key, text]) => ({
+                    key,
+                    text: text as string,
+                  }))
+                }
 
-                  // Increment the counter for the next question
-                  sequentialQuestionNumber += questionCount
+                return (
+                  <div
+                    key={questionId}
+                    ref={(el) => (questionRefs.current[question.id] = el)}
+                    className="space-y-4 p-4 sm:p-6 border rounded-lg bg-white border-gray-200"
+                  >
+                    {isFirstInGroup && questionGroup?.instruction && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                        <div
+                          className="text-gray-800"
+                          dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                        />
+                      </div>
+                    )}
 
-                  let parsedOptions = question.options
-                  if (typeof question.options === "string") {
-                    try {
-                      parsedOptions = JSON.parse(question.options)
-                    } catch (e) {
-                      parsedOptions = null
-                    }
-                  }
+                    {["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING", "NOTE_COMPLETION"].includes(
+                      question.q_type || "",
+                    ) && (
+                      <div className="mb-4">
+                        <h4 className="text-base sm:text-lg font-bold text-gray-900 mb-2">
+                          Questions {questionCount > 1 ? `${questionStartNum}–${questionEndNum}` : questionStartNum}
+                        </h4>
+                        {question.q_text && <p className="text-gray-700 mb-2">{question.q_text}</p>}
+                      </div>
+                    )}
 
-                  let optionsArray: { key: string; text: string }[] = []
-
-                  if (Array.isArray(parsedOptions)) {
-                    optionsArray = parsedOptions.map((option: any) => ({
-                      key: option.key || option.value || "",
-                      text: option.text || option.label || option.value || "",
-                    }))
-                  } else if (parsedOptions && typeof parsedOptions === "object") {
-                    optionsArray = Object.entries(parsedOptions).map(([key, text]) => ({
-                      key,
-                      text: text as string,
-                    }))
-                  }
-
-                  return (
-                    <div
-                      key={question.id}
-                      className="space-y-4 p-4 sm:p-6 border rounded-lg bg-white border-gray-200"
-                      ref={(el) => (questionRefs.current[question.id] = el)}
-                    >
-                      {question.q_type !== "NOTE_COMPLETION" && (
-                        <div className="flex flex-row items-start gap-3 mb-4">
-                          <div className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0">
-                            {questionStartNum}
-                            {questionCount > 1 && ` - ${questionEndNum}`}
-                          </div>
-
-                          {question.q_text && (
-                            <div className="text-base sm:text-lg text-gray-900 font-medium leading-relaxed flex-1">
-                              {question.q_text}
-                            </div>
-                          )}
+                    {!["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING", "NOTE_COMPLETION", "FLOW_CHART"].includes(
+                      question.q_type || "",
+                    ) && (
+                      <div className="flex flex-row items-start gap-3 mb-4">
+                        <div className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0">
+                          {questionCount > 1 ? `${questionStartNum} - ${questionEndNum}` : questionStartNum}
                         </div>
-                      )}
+                        {question.q_text && <p className="text-gray-700 flex-1">{question.q_text}</p>}
+                      </div>
+                    )}
 
-                      {question.q_type === "TFNG" ||
-                        (question.q_type === "TRUE_FALSE_NOT_GIVEN" && (
-                          <div className="space-y-3">
-                            <RadioGroup
-                              value={currentAnswer || ""}
-                              onValueChange={(value) => handleAnswerChange(questionId, value)}
-                              className="space-y-3"
-                            >
-                              <div className="flex items-center space-x-3">
-                                <RadioGroupItem value="TRUE" id={`q${question.id}-true`} />
-                                <Label
-                                  htmlFor={`q${question.id}-true`}
-                                  className="cursor-pointer text-sm sm:text-base text-gray-900"
-                                >
-                                  TRUE
-                                </Label>
-                              </div>
-                              <div className="flex items-center space-x-3">
-                                <RadioGroupItem value="FALSE" id={`q${question.id}-false`} />
-                                <Label
-                                  htmlFor={`q${question.id}-false`}
-                                  className="cursor-pointer text-sm sm:text-base text-gray-900"
-                                >
-                                  FALSE
-                                </Label>
-                              </div>
-                              <div className="flex items-center space-x-3">
-                                <RadioGroupItem value="NOT_GIVEN" id={`q${question.id}-ng`} />
-                                <Label
-                                  htmlFor={`q${question.id}-ng`}
-                                  className="cursor-pointer text-sm sm:text-base text-gray-900"
-                                >
-                                  NOT GIVEN
-                                </Label>
-                              </div>
-                            </RadioGroup>
-                          </div>
-                        ))}
-
-                      {question.q_type === "MCQ_SINGLE" && optionsArray.length > 0 && (
+                    {question.q_type === "TFNG" ||
+                      (question.q_type === "TRUE_FALSE_NOT_GIVEN" && (
                         <div className="space-y-3">
                           <RadioGroup
                             value={currentAnswer || ""}
                             onValueChange={(value) => handleAnswerChange(questionId, value)}
                             className="space-y-3"
                           >
-                            {optionsArray.map((option, index) => (
+                            <div className="flex items-center space-x-3">
+                              <RadioGroupItem value="TRUE" id={`q${question.id}-true`} />
+                              <Label
+                                htmlFor={`q${question.id}-true`}
+                                className="cursor-pointer text-sm sm:text-base text-gray-900"
+                              >
+                                TRUE
+                              </Label>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <RadioGroupItem value="FALSE" id={`q${question.id}-false`} />
+                              <Label
+                                htmlFor={`q${question.id}-false`}
+                                className="cursor-pointer text-sm sm:text-base text-gray-900"
+                              >
+                                FALSE
+                              </Label>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <RadioGroupItem value="NOT_GIVEN" id={`q${question.id}-ng`} />
+                              <Label
+                                htmlFor={`q${question.id}-ng`}
+                                className="cursor-pointer text-sm sm:text-base text-gray-900"
+                              >
+                                NOT GIVEN
+                              </Label>
+                            </div>
+                          </RadioGroup>
+                        </div>
+                      ))}
+
+                    {question.q_type === "MCQ_SINGLE" && optionsArray.length > 0 && (
+                      <div className="space-y-3">
+                        <RadioGroup
+                          value={currentAnswer || ""}
+                          onValueChange={(value) => handleAnswerChange(questionId, value)}
+                          className="space-y-3"
+                        >
+                          {optionsArray.map((option, index) => (
+                            <div key={index} className="flex items-center space-x-3">
+                              <RadioGroupItem value={option.key} id={`q${question.id}-${option.key}`} />
+                              <Label
+                                htmlFor={`q${question.id}-${option.key}`}
+                                className="cursor-pointer text-sm sm:text-base text-gray-900"
+                              >
+                                {option.text}
+                              </Label>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
+                    )}
+
+                    {question.q_type === "MCQ_MULTI" && optionsArray.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="space-y-3">
+                          {optionsArray.map((option, index) => {
+                            const currentAnswersArray = currentAnswer
+                              ? Array.isArray(currentAnswer)
+                                ? currentAnswer
+                                : currentAnswer.split(",").filter(Boolean)
+                              : []
+
+                            const correctAnswersCount = Array.isArray(question.correct_answers)
+                              ? question.correct_answers.length
+                              : 1
+
+                            return (
                               <div key={index} className="flex items-center space-x-3">
-                                <RadioGroupItem value={option.key} id={`q${question.id}-${option.key}`} />
+                                <input
+                                  type="checkbox"
+                                  id={`q${question.id}-${option.key}`}
+                                  checked={currentAnswersArray.includes(option.key)}
+                                  onChange={(e) => {
+                                    let newAnswers: string[]
+                                    if (e.target.checked) {
+                                      if (currentAnswersArray.length >= correctAnswersCount) {
+                                        // Remove the first selected answer to make room for the new one
+                                        newAnswers = [...currentAnswersArray.slice(1), option.key]
+                                      } else {
+                                        newAnswers = [...currentAnswersArray, option.key]
+                                      }
+                                    } else {
+                                      newAnswers = currentAnswersArray.filter((a) => a !== option.key)
+                                    }
+                                    handleAnswerChange(questionId, newAnswers)
+                                  }}
+                                  className="rounded border-gray-300"
+                                />
                                 <Label
                                   htmlFor={`q${question.id}-${option.key}`}
                                   className="cursor-pointer text-sm sm:text-base text-gray-900"
                                 >
-                                   {option.text}
+                                  {option.text}
                                 </Label>
                               </div>
-                            ))}
-                          </RadioGroup>
+                            )
+                          })}
                         </div>
-                      )}
+                      </div>
+                    )}
 
-                      {question.q_type === "MCQ_MULTI" && optionsArray.length > 0 && (
-                        <div className="space-y-3">
-                          <div className="space-y-3">
-                            {optionsArray.map((option, index) => {
-                              const currentAnswersArray = currentAnswer
-                                ? Array.isArray(currentAnswer)
-                                  ? currentAnswer
-                                  : currentAnswer.split(",").filter(Boolean)
-                                : []
+                    {question.q_type === "SENTENCE_COMPLETION" && (
+                      <div className="space-y-2">
+                        <div className="text-base leading-relaxed text-gray-900">
+                          {(() => {
+                            const text = question.q_text || ""
+                            const parts = text.split(/_+/)
 
-                              const correctAnswersCount = Array.isArray(question.correct_answers)
-                                ? question.correct_answers.length
-                                : 1
-
+                            if (parts.length === 1) {
+                              // No underscores, just show input below
                               return (
-                                <div key={index} className="flex items-center space-x-3">
-                                  <input
-                                    type="checkbox"
-                                    id={`q${question.id}-${option.key}`}
-                                    checked={currentAnswersArray.includes(option.key)}
-                                    onChange={(e) => {
-                                      let newAnswers: string[]
-                                      if (e.target.checked) {
-                                        if (currentAnswersArray.length >= correctAnswersCount) {
-                                          // Remove the first selected answer to make room for the new one
-                                          newAnswers = [...currentAnswersArray.slice(1), option.key]
-                                        } else {
-                                          newAnswers = [...currentAnswersArray, option.key]
-                                        }
-                                      } else {
-                                        newAnswers = currentAnswersArray.filter((a) => a !== option.key)
-                                      }
-                                      handleAnswerChange(questionId, newAnswers)
-                                    }}
-                                    className="rounded border-gray-300"
+                                <>
+                                  <p className="mb-2">{text}</p>
+                                  <Input
+                                    value={currentAnswer || ""}
+                                    onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                                    className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
+                                    placeholder="Your answer"
                                   />
-                                  <Label
-                                    htmlFor={`q${question.id}-${option.key}`}
-                                    className="cursor-pointer text-sm sm:text-base text-gray-900"
-                                  >
-                                     {option.text}
-                                  </Label>
-                                </div>
+                                </>
                               )
-                            })}
+                            }
+
+                            // Show inline input where underscore is
+                            return (
+                              <div className="flex flex-wrap items-center gap-2">
+                                {parts.map((part, index) => (
+                                  <React.Fragment key={index}>
+                                    <span>{part}</span>
+                                    {index < parts.length - 1 && (
+                                      <Input
+                                        value={currentAnswer || ""}
+                                        onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                                        className="inline-block w-32 px-2 py-1 text-sm bg-white border-gray-300 focus:border-gray-500"
+                                        placeholder={questionStartNum.toString()}
+                                      />
+                                    )}
+                                  </React.Fragment>
+                                ))}
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
+                    {question.q_type === "SENTENCE_ENDINGS" && optionsArray.length > 0 && (
+                      <div className="space-y-4">
+                        <div className="space-y-3">
+                          <div className="border-2 border-dashed border-blue-300 bg-blue-50 p-3 rounded-lg min-h-[40px] flex items-center">
+                            {currentAnswer ? (
+                              <span className="text-blue-800 font-medium">{currentAnswer}</span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">Select an option</span>
+                            )}
                           </div>
                         </div>
-                      )}
+                        <div className="border-t pt-3">
+                          <p className="text-xs text-gray-600 mb-2">Choose from:</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {optionsArray.map((option, index) => (
+                              <Button
+                                key={index}
+                                variant={currentAnswer === option.key ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => handleAnswerChange(questionId, option.key)}
+                                className={`text-xs p-2 h-auto text-left ${
+                                  currentAnswer === option.key
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
+                                }`}
+                              >
+                                <span className="font-medium">{option.key}</span> {option.text}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
-                      {question.q_type === "SENTENCE_COMPLETION" && (
-                        <div className="space-y-2">
-                          <div className="text-base leading-relaxed text-gray-900">
-                            {(() => {
-                              const text = question.q_text || ""
-                              const parts = text.split(/_+/)
-
-                              if (parts.length === 1) {
-                                // No underscores, just show input below
-                                return (
-                                  <>
-                                    <p className="mb-2">{text}</p>
-                                    <Input
-                                      value={currentAnswer || ""}
-                                      onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                                      className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
-                                      placeholder="Your answer"
-                                    />
-                                  </>
-                                )
-                              }
-
-                              // Show inline input where underscore is
-                              return (
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {parts.map((part, index) => (
-                                    <React.Fragment key={index}>
-                                      <span>{part}</span>
-                                      {index < parts.length - 1 && (
-                                        <Input
-                                          value={currentAnswer || ""}
-                                          onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                                          className="inline-block w-32 px-2 py-1 text-sm bg-white border-gray-300 focus:border-gray-500"
-                                          placeholder={questionStartNum.toString()}
-                                        />
-                                      )}
-                                    </React.Fragment>
+                    {question.q_type === "MATCHING_INFORMATION" && (
+                      <div className="space-y-6">
+                        <div className="overflow-x-auto">
+                          <table className="w-full border text-base border-gray-300">
+                            <thead>
+                              <tr className="bg-gray-50">
+                                <th className="border p-3 text-left font-semibold text-black border-gray-300">
+                                  Questions {questionStartNum}–{questionEndNum}
+                                </th>
+                                {question.choices &&
+                                  Object.keys(question.choices).map((choiceKey) => (
+                                    <th
+                                      key={choiceKey}
+                                      className="border p-3 text-center font-semibold w-16 text-black border-gray-300"
+                                    >
+                                      {choiceKey}
+                                    </th>
                                   ))}
-                                </div>
-                              )
-                            })()}
-                          </div>
-                        </div>
-                      )}
-
-                      {question.q_type === "SENTENCE_ENDINGS" && optionsArray.length > 0 && (
-                        <div className="space-y-4">
-                          <div className="space-y-3">
-                            <div className="border-2 border-dashed border-blue-300 bg-blue-50 p-3 rounded-lg min-h-[40px] flex items-center">
-                              {currentAnswer ? (
-                                <span className="text-blue-800 font-medium">{currentAnswer}</span>
-                              ) : (
-                                <span className="text-gray-400 text-xs">Select an option</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="border-t pt-3">
-                            <p className="text-xs text-gray-600 mb-2">Choose from:</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {optionsArray.map((option, index) => (
-                                <Button
-                                  key={index}
-                                  variant={currentAnswer === option.key ? "default" : "outline"}
-                                  size="sm"
-                                  onClick={() => handleAnswerChange(questionId, option.key)}
-                                  className={`text-xs p-2 h-auto text-left ${
-                                    currentAnswer === option.key
-                                      ? "bg-blue-600 text-white"
-                                      : "bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
-                                  }`}
-                                >
-                                  <span className="font-medium">{option.key}</span> {option.text}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {question.q_type === "MATCHING_INFORMATION" && (
-                        <div className="space-y-6">
-                          <div className="overflow-x-auto">
-                            <table className="w-full border text-base border-gray-300">
-                              <thead>
-                                <tr className="bg-gray-50">
-                                  <th className="border p-3 text-left font-semibold text-black border-gray-300">
-                                    Questions {questionStartNum}–{questionEndNum}
-                                  </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {question.rows?.map((rowText, index) => (
+                                <tr key={index}>
+                                  <td className="border p-3 border-gray-300 text-black">
+                                    <div className="flex items-center gap-2">
+                                      <span className="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium">
+                                        {questionStartNum + index}
+                                      </span>
+                                      <span className="font-medium">{rowText}</span>
+                                    </div>
+                                  </td>
                                   {question.choices &&
                                     Object.keys(question.choices).map((choiceKey) => (
-                                      <th
-                                        key={choiceKey}
-                                        className="border p-3 text-center font-semibold w-16 text-black border-gray-300"
-                                      >
-                                        {choiceKey}
-                                      </th>
+                                      <td key={choiceKey} className="border p-3 text-center border-gray-300">
+                                        <input
+                                          type="radio"
+                                          name={`matching_${question.id}_${index}`}
+                                          value={choiceKey}
+                                          checked={answers[`${question.id}_matching_${index}`] === choiceKey}
+                                          onChange={(e) =>
+                                            handleAnswerChange(`${question.id}_matching_${index}`, e.target.value)
+                                          }
+                                          className="w-4 h-4"
+                                        />
+                                      </td>
                                     ))}
                                 </tr>
-                              </thead>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="mt-6">
+                          <h5 className="font-semibold mb-3 text-black">{question.q_text || "Choices:"}</h5>
+                          <div className="overflow-x-auto">
+                            <table className="w-full border text-base border-gray-300">
                               <tbody>
-                                {question.rows?.map((rowText, index) => (
-                                  <tr key={index}>
-                                    <td className="border p-3 border-gray-300 text-black">
-                                      <div className="flex items-center gap-2">
-                                        <span className="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium">
-                                          {questionStartNum + index}
-                                        </span>
-                                        <span className="font-medium">{rowText}</span>
-                                      </div>
-                                    </td>
-                                    {question.choices &&
-                                      Object.keys(question.choices).map((choiceKey) => (
-                                        <td key={choiceKey} className="border p-3 text-center border-gray-300">
-                                          <input
-                                            type="radio"
-                                            name={`matching_${question.id}_${index}`}
-                                            value={choiceKey}
-                                            checked={answers[`${question.id}_matching_${index}`] === choiceKey}
-                                            onChange={(e) =>
-                                              handleAnswerChange(`${question.id}_matching_${index}`, e.target.value)
-                                            }
-                                            className="w-4 h-4"
-                                          />
-                                        </td>
-                                      ))}
-                                  </tr>
-                                ))}
+                                {question.choices &&
+                                  Object.entries(question.choices).map(([key, text]) => (
+                                    <tr key={key}>
+                                      <td className="border p-3 w-16 text-center font-semibold bg-gray-50 text-black border-gray-300">
+                                        {key}
+                                      </td>
+                                      <td className="border p-3 border-gray-300 text-black">{text}</td>
+                                    </tr>
+                                  ))}
                               </tbody>
                             </table>
                           </div>
-
-                          <div className="mt-6">
-                            <h5 className="font-semibold mb-3 text-black">{question.q_text || "Choices:"}</h5>
-                            <div className="overflow-x-auto">
-                              <table className="w-full border text-base border-gray-300">
-                                <tbody>
-                                  {question.choices &&
-                                    Object.entries(question.choices).map(([key, text]) => (
-                                      <tr key={key}>
-                                        <td className="border p-3 w-16 text-center font-semibold bg-gray-50 text-black border-gray-300">
-                                          {key}
-                                        </td>
-                                        <td className="border p-3 border-gray-300 text-black">{text}</td>
-                                      </tr>
-                                    ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
                         </div>
-                      )}
+                      </div>
+                    )}
 
-                      {/* Updated TABLE_COMPLETION rendering to use separate entry format */}
-                      {question.q_type === "TABLE_COMPLETION" && (
-                        <div className="overflow-x-auto">
-                          <table className="w-full border-collapse border border-gray-300">
-                            <tbody>
-                              {question.rows?.map((row: any, rowIndex: number) => (
+                    {question.q_type === "TABLE_COMPLETION" && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse border border-gray-300">
+                          <tbody>
+                            {question.rows?.map((row: any, rowIndex: number) => {
+                              const cellInputCounter = 0
+                              return (
                                 <tr key={rowIndex}>
                                   {row.cells?.map((cell: string, cellIndex: number) => {
                                     const isEmptyOrUnderscore = cell === "" || cell === "_"
@@ -2009,6 +2044,31 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                       const tableAnswersKey = `${questionId}_answer`
                                       const tableAnswers = answers[tableAnswersKey] || {}
                                       const cellKey = `${rowIndex}_${cellIndex}`
+
+                                      // Calculate the question number for this specific input
+                                      let inputQuestionNumber = questionStartNum
+                                      for (let r = 0; r < rowIndex; r++) {
+                                        for (let c = 0; c < row.cells.length; c++) {
+                                          const prevCell = question.rows[r].cells[c]
+                                          if (
+                                            prevCell === "" ||
+                                            prevCell === "_" ||
+                                            (typeof prevCell === "string" && /_+/.test(prevCell))
+                                          ) {
+                                            inputQuestionNumber++
+                                          }
+                                        }
+                                      }
+                                      for (let c = 0; c < cellIndex; c++) {
+                                        const prevCell = row.cells[c]
+                                        if (
+                                          prevCell === "" ||
+                                          prevCell === "_" ||
+                                          (typeof prevCell === "string" && /_+/.test(prevCell))
+                                        ) {
+                                          inputQuestionNumber++
+                                        }
+                                      }
 
                                       return (
                                         <td key={cellIndex} className="border border-gray-300 p-2">
@@ -2028,7 +2088,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                                           )
                                                         }
                                                         className="w-32 text-sm bg-white border-gray-300 focus:border-gray-500 inline-block"
-                                                        placeholder="Answer"
+                                                        placeholder={inputQuestionNumber.toString()}
                                                       />
                                                     )
                                                   }
@@ -2049,7 +2109,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                                   )
                                                 }
                                                 className="w-full text-sm bg-white border-gray-300 focus:border-gray-500"
-                                                placeholder="Answer"
+                                                placeholder={inputQuestionNumber.toString()}
                                               />
                                             )}
                                           </div>
@@ -2064,105 +2124,170 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                     )
                                   })}
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
 
-                      {question.q_type === "MAP_LABELING" && question.photo && question.rows && (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Map Image with Drop Zones */}
-                            <div className="lg:col-span-2">
-                              <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
-                                <img
-                                  src={`${process.env.NEXT_PUBLIC_API_URL}/uploads/l_questions/${question.photo}`}
-                                  alt="Map"
-                                  className="w-full h-auto"
-                                  draggable={false}
-                                />
-                                {/* Drop Zones */}
-                                {(() => {
-                                  let rowsData: Record<string, any> = {}
-                                  if (question.rows) {
-                                    if (typeof question.rows === "object") {
-                                      rowsData = question.rows
-                                    } else if (typeof question.rows === "string") {
-                                      try {
-                                        rowsData = JSON.parse(question.rows)
-                                      } catch (e) {
-                                        console.error("[v0] Failed to parse MAP_LABELING rows for rendering:", e)
-                                        console.error("[v0] Invalid rows data:", question.rows)
-                                      }
+                    {question.q_type === "MAP_LABELING" && question.photo && question.rows && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                          {/* Map Image with Drop Zones */}
+                          <div className="lg:col-span-2">
+                            <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+                              <img
+                                src={`${process.env.NEXT_PUBLIC_API_URL}/uploads/l_questions/${question.photo}`}
+                                alt="Map"
+                                className="w-full h-auto"
+                                draggable={false}
+                              />
+                              {/* Drop Zones */}
+                              {(() => {
+                                let rowsData: Record<string, any> = {}
+                                if (question.rows) {
+                                  if (typeof question.rows === "object") {
+                                    rowsData = question.rows
+                                  } else if (typeof question.rows === "string") {
+                                    try {
+                                      rowsData = JSON.parse(question.rows)
+                                    } catch (e) {
+                                      console.error("[v0] Failed to parse MAP_LABELING rows for rendering:", e)
+                                      console.error("[v0] Invalid rows data:", question.rows)
                                     }
                                   }
+                                }
 
-                                  return Object.entries(rowsData).map(([position, coords]: [string, any], index) => {
-                                    const dropZoneQuestionId = `${question.id}_map_${position}`
-                                    const currentAnswer = answers[dropZoneQuestionId]
-                                    const questionNum = thisQuestionStartNum + index // Use sequential numbering
+                                return Object.entries(rowsData).map(([position, coords]: [string, any], index) => {
+                                  const dropZoneQuestionId = `${question.id}_map_${position}`
+                                  const currentAnswer = answers[dropZoneQuestionId]
+                                  const questionNum = thisQuestionStartNum + index
 
-                                    let selectedOptionText = ""
-                                    if (currentAnswer) {
-                                      const selectedOption = optionsArray.find((opt) => opt.key === currentAnswer)
-                                      selectedOptionText = selectedOption?.text || ""
-                                    }
+                                  let selectedOptionText = ""
+                                  if (currentAnswer) {
+                                    const selectedOption = optionsArray.find((opt) => opt.key === currentAnswer)
+                                    selectedOptionText = selectedOption?.text || ""
+                                  }
 
-                                    return (
-                                      <div
-                                        key={position}
-                                        className="absolute"
-                                        style={{
-                                          left: coords.x,
-                                          top: coords.y,
-                                          transform: "translate(-50%, -50%)",
-                                        }}
-                                        onDragOver={(e) => {
-                                          e.preventDefault()
-                                          e.currentTarget.classList.add("bg-blue-200", "scale-110")
-                                        }}
-                                        onDragLeave={(e) => {
-                                          e.currentTarget.classList.remove("bg-blue-200", "scale-110")
-                                        }}
-                                        onDrop={(e) => {
-                                          e.preventDefault()
-                                          e.currentTarget.classList.remove("bg-blue-200", "scale-110")
-                                          const optionKey = e.dataTransfer.getData("text/plain")
-                                          if (optionKey) {
-                                            handleAnswerChange(dropZoneQuestionId, optionKey, dropZoneQuestionId)
+                                  return (
+                                    <div
+                                      key={position}
+                                      className="absolute"
+                                      style={{
+                                        left: coords.x,
+                                        top: coords.y,
+                                        transform: "translate(-50%, -50%)",
+                                      }}
+                                      onDragOver={(e) => {
+                                        e.preventDefault()
+                                        e.currentTarget.classList.add("bg-blue-200", "scale-110")
+                                      }}
+                                      onDragLeave={(e) => {
+                                        e.currentTarget.classList.remove("bg-blue-200", "scale-110")
+                                      }}
+                                      onDrop={(e) => {
+                                        e.preventDefault()
+                                        e.currentTarget.classList.remove("bg-blue-200", "scale-110")
+                                        const optionKey = e.dataTransfer.getData("text/plain")
+                                        if (optionKey) {
+                                          handleAnswerChange(dropZoneQuestionId, optionKey, dropZoneQuestionId)
+                                        }
+                                      }}
+                                    >
+                                      <div className="flex flex-col items-center gap-1">
+                                        <div
+                                          draggable={!!currentAnswer}
+                                          onDragStart={(e) => {
+                                            if (currentAnswer) {
+                                              e.dataTransfer.setData("text/plain", currentAnswer)
+                                              e.dataTransfer.setData("removeFrom", dropZoneQuestionId)
+                                              e.currentTarget.classList.add("opacity-50")
+                                            }
+                                          }}
+                                          onDragEnd={(e) => {
+                                            e.currentTarget.classList.remove("opacity-50")
+                                          }}
+                                          className={`min-w-[80px] px-3 py-2 rounded-lg border-2 flex flex-col items-center justify-center text-sm font-semibold shadow-lg transition-all ${
+                                            currentAnswer
+                                              ? "bg-white border-gray-500 hover:bg-red-50 cursor-move"
+                                              : "bg-white border-dashed border-gray-400 hover:border-gray-600 hover:scale-105 cursor-pointer"
+                                          }`}
+                                          onClick={() => {
+                                            if (currentAnswer) {
+                                              handleAnswerChange(dropZoneQuestionId, null, dropZoneQuestionId)
+                                            }
+                                          }}
+                                          title={
+                                            currentAnswer
+                                              ? "Click to remove or drag back to options"
+                                              : "Drag option here"
                                           }
-                                        }}
-                                      >
-                                        <div className="flex flex-col items-center gap-1">
-                                          <div
-                                            className={`min-w-[80px] px-3 py-2 rounded-lg border-2 flex flex-col items-center justify-center text-sm font-semibold shadow-lg transition-all ${
-                                              currentAnswer
-                                                ? "bg-white border-gray-500"
-                                                : "bg-white border-dashed border-gray-400 hover:border-gray-600 hover:scale-105"
-                                            }`}
-                                          >
-                                            <span className="text-gray-600 font-bold text-base">{questionNum}</span>
-                                            {currentAnswer && selectedOptionText && (
-                                              <span className="text-gray-700 text-xs mt-1 text-center">
-                                                {selectedOptionText}
-                                              </span>
-                                            )}
-                                          </div>
+                                        >
+                                          <span className="text-gray-600 font-bold text-base">{questionNum}</span>
+                                          {currentAnswer && selectedOptionText && (
+                                            <span className="text-gray-700 text-xs mt-1 text-center">
+                                              {selectedOptionText}
+                                            </span>
+                                          )}
                                         </div>
                                       </div>
-                                    )
-                                  })
-                                })()}
-                              </div>
+                                    </div>
+                                  )
+                                })
+                              })()}
                             </div>
+                          </div>
 
-                            {/* Options Panel */}
-                            <div className="lg:col-span-1">
-                              <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4">
-                                <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
-                                <div className="space-y-2">
-                                  {optionsArray.map((option) => (
+                          {/* Options Panel */}
+                          <div className="lg:col-span-1">
+                            <div
+                              className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 sticky top-4"
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                const removeFrom = e.dataTransfer.types.includes("removefrom")
+                                if (removeFrom) {
+                                  e.currentTarget.classList.add("bg-blue-50", "border-blue-400")
+                                }
+                              }}
+                              onDragLeave={(e) => {
+                                e.currentTarget.classList.remove("bg-blue-50", "border-blue-400")
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                e.currentTarget.classList.remove("bg-blue-50", "border-blue-400")
+                                const removeFrom = e.dataTransfer.getData("removeFrom")
+                                if (removeFrom) {
+                                  handleAnswerChange(removeFrom, null, removeFrom)
+                                }
+                              }}
+                            >
+                              <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
+                              <div className="space-y-2">
+                                {optionsArray
+                                  .filter((option) => {
+                                    // Check if this option is used in any drop zone
+                                    let rowsData: Record<string, any> = {}
+                                    if (question.rows) {
+                                      if (typeof question.rows === "object") {
+                                        rowsData = question.rows
+                                      } else if (typeof question.rows === "string") {
+                                        try {
+                                          rowsData = JSON.parse(question.rows)
+                                        } catch (e) {
+                                          return true
+                                        }
+                                      }
+                                    }
+
+                                    const isUsed = Object.keys(rowsData).some((position) => {
+                                      const dropZoneQuestionId = `${question.id}_map_${position}`
+                                      return answers[dropZoneQuestionId] === option.key
+                                    })
+
+                                    return !isUsed
+                                  })
+                                  .map((option) => (
                                     <div
                                       key={option.key}
                                       draggable
@@ -2183,270 +2308,317 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                       </div>
                                     </div>
                                   ))}
-                                </div>
+                                {optionsArray.filter((option) => {
+                                  let rowsData: Record<string, any> = {}
+                                  if (question.rows) {
+                                    if (typeof question.rows === "object") {
+                                      rowsData = question.rows
+                                    } else if (typeof question.rows === "string") {
+                                      try {
+                                        rowsData = JSON.parse(question.rows)
+                                      } catch (e) {
+                                        return true
+                                      }
+                                    }
+                                  }
+                                  const isUsed = Object.keys(rowsData).some((position) => {
+                                    const dropZoneQuestionId = `${question.id}_map_${position}`
+                                    return answers[dropZoneQuestionId] === option.key
+                                  })
+                                  return !isUsed
+                                }).length === 0 && (
+                                  <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
+                                )}
                               </div>
                             </div>
                           </div>
                         </div>
-                      )}
+                      </div>
+                    )}
 
-                      {question.q_type === "FLOW_CHART" && question.choices && (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Flow Chart */}
-                            <div className="lg:col-span-2">
-                              <div className="space-y-3">
-                                {Object.entries(question.choices).map(([stepNum, stepText]: [string, any], index) => {
-                                  const hasBlank = stepText.includes("__")
-                                  const flowChartQuestionId = question.id.toString()
-                                  const allAnswers = answers[flowChartQuestionId]
-                                  const currentAnswer =
-                                    allAnswers && typeof allAnswers === "object" && allAnswers[stepNum]
-                                      ? allAnswers[stepNum]
-                                      : ""
+                    {question.q_type === "FLOW_CHART" && question.choices && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                          {/* Flow Chart */}
+                          <div className="lg:col-span-2">
+                            <div className="space-y-3">
+                              {Object.entries(question.choices).map(([stepNum, stepText]: [string, any], index) => {
+                                const hasBlank = stepText.includes("__")
+                                const flowChartQuestionId = question.id.toString()
+                                const allAnswers = answers[flowChartQuestionId]
+                                const currentAnswer =
+                                  allAnswers && typeof allAnswers === "object" && allAnswers[stepNum]
+                                    ? allAnswers[stepNum]
+                                    : ""
 
-                                  const stepQuestionNum = hasBlank
-                                    ? (() => {
-                                        const allQuestions = getAllQuestions()
-                                        const baseQuestionIndex = allQuestions.findIndex(
-                                          (q) => q.id.toString() === flowChartQuestionId,
-                                        )
-                                        let questionCounter = 1
-                                        for (let i = 0; i < baseQuestionIndex; i++) {
-                                          questionCounter += getQuestionCount(allQuestions[i])
-                                        }
-                                        let blankCounter = 0
-                                        const sortedSteps = Object.entries(question.choices || {}).sort(
-                                          ([a], [b]) => Number(a) - Number(b),
-                                        )
-                                        for (const [step, text] of sortedSteps) {
-                                          if (typeof text === "string" && text.includes("__")) {
-                                            if (step === stepNum) {
-                                              return questionCounter + blankCounter
-                                            }
-                                            blankCounter++
+                                const stepQuestionNum = hasBlank
+                                  ? (() => {
+                                      const allQuestions = getAllQuestions()
+                                      const baseQuestionIndex = allQuestions.findIndex(
+                                        (q) => q.id.toString() === flowChartQuestionId,
+                                      )
+                                      let questionCounter = 1
+                                      for (let i = 0; i < baseQuestionIndex; i++) {
+                                        questionCounter += getQuestionCount(allQuestions[i])
+                                      }
+                                      let blankCounter = 0
+                                      const sortedSteps = Object.entries(question.choices || {}).sort(
+                                        ([a], [b]) => Number(a) - Number(b),
+                                      )
+                                      for (const [step, text] of sortedSteps) {
+                                        if (typeof text === "string" && text.includes("__")) {
+                                          if (step === stepNum) {
+                                            return questionCounter + blankCounter
                                           }
+                                          blankCounter++
                                         }
-                                        return questionCounter
-                                      })()
-                                    : null
+                                      }
+                                      return questionCounter
+                                    })()
+                                  : null
 
-                                  let selectedOptionText = currentAnswer
-                                  if (currentAnswer && question.options && Array.isArray(question.options)) {
-                                    selectedOptionText = currentAnswer
-                                  }
+                                let selectedOptionText = currentAnswer
+                                if (currentAnswer && question.options && Array.isArray(question.options)) {
+                                  selectedOptionText = currentAnswer
+                                }
 
-                                  return (
-                                    <React.Fragment key={stepNum}>
-                                      <div className="border-2 border-gray-300 rounded-lg p-4 bg-white">
-                                        {hasBlank ? (
-                                          <div className="text-base text-gray-900 leading-relaxed">
-                                            {stepText.split("__").map((part: string, partIndex: number) => (
-                                              <React.Fragment key={partIndex}>
-                                                {part}
-                                                {partIndex < stepText.split("__").length - 1 && (
-                                                  <span
-                                                    className={`inline-flex items-center gap-2 min-w-[140px] px-3 py-2 mx-1 border-2 border-dashed rounded transition-all ${
-                                                      currentAnswer
-                                                        ? "bg-gray-50 border-gray-500 cursor-pointer hover:bg-red-50 hover:border-red-500"
-                                                        : "bg-gray-50 border-gray-400 hover:border-gray-600"
-                                                    }`}
-                                                    onDragOver={(e) => {
-                                                      e.preventDefault()
-                                                      e.currentTarget.classList.add("bg-gray-100", "scale-105")
-                                                    }}
-                                                    onDragLeave={(e) => {
-                                                      e.currentTarget.classList.remove("bg-gray-100", "scale-105")
-                                                    }}
-                                                    onDrop={(e) => {
-                                                      e.preventDefault()
-                                                      e.currentTarget.classList.remove("bg-gray-100", "scale-105")
-                                                      const optionKey = e.dataTransfer.getData("text/plain")
-                                                      if (optionKey) {
-                                                        const fullQuestionId = `${question.id}_flow_${stepNum}`
-                                                        handleAnswerChange(
-                                                          flowChartQuestionId,
-                                                          optionKey,
-                                                          fullQuestionId,
-                                                        )
-                                                      }
-                                                    }}
-                                                    onClick={() => {
-                                                      if (currentAnswer) {
-                                                        const fullQuestionId = `${question.id}_flow_${stepNum}`
-                                                        handleAnswerChange(flowChartQuestionId, null, fullQuestionId)
-                                                      }
-                                                    }}
-                                                    title={currentAnswer ? "Click to remove" : "Drag option here"}
-                                                  >
-                                                    <span className="bg-gray-700 text-white px-2 py-1 rounded text-xs font-medium flex-shrink-0">
-                                                      {stepQuestionNum}
-                                                    </span>
-                                                    {currentAnswer ? (
-                                                      <span className="font-semibold text-gray-700">
-                                                        {selectedOptionText}
-                                                      </span>
-                                                    ) : (
-                                                      <span className="text-gray-400 text-sm">Drop here</span>
-                                                    )}
+                                return (
+                                  <React.Fragment key={stepNum}>
+                                    <div className="border-2 border-gray-300 rounded-lg p-4 bg-white">
+                                      {hasBlank ? (
+                                        <div className="text-base text-gray-900 leading-relaxed">
+                                          {(() => {
+                                            const firstBlankIndex = stepText.indexOf("__")
+                                            if (firstBlankIndex === -1) return stepText
+
+                                            const beforeBlank = stepText.substring(0, firstBlankIndex)
+                                            const afterBlank = stepText
+                                              .substring(firstBlankIndex + 2)
+                                              .replace(/__/g, "")
+
+                                            return (
+                                              <>
+                                                {beforeBlank}
+                                                <span
+                                                  draggable={!!currentAnswer}
+                                                  onDragStart={(e) => {
+                                                    if (currentAnswer) {
+                                                      e.dataTransfer.setData("text/plain", currentAnswer)
+                                                      e.dataTransfer.setData("removeFrom", stepNum)
+                                                      e.dataTransfer.setData("removeFromQuestion", flowChartQuestionId)
+                                                      e.currentTarget.classList.add("opacity-50")
+                                                    }
+                                                  }}
+                                                  onDragEnd={(e) => {
+                                                    e.currentTarget.classList.remove("opacity-50")
+                                                  }}
+                                                  className={`inline-flex items-center gap-2 min-w-[140px] px-3 py-2 mx-1 border-2 border-dashed rounded transition-all ${
+                                                    currentAnswer
+                                                      ? "bg-gray-50 border-gray-500 cursor-move hover:bg-red-50 hover:border-red-500"
+                                                      : "bg-gray-50 border-gray-400 hover:border-gray-600"
+                                                  }`}
+                                                  onDragOver={(e) => {
+                                                    e.preventDefault()
+                                                    e.currentTarget.classList.add("bg-gray-100", "scale-105")
+                                                  }}
+                                                  onDragLeave={(e) => {
+                                                    e.currentTarget.classList.remove("bg-gray-100", "scale-105")
+                                                  }}
+                                                  onDrop={(e) => {
+                                                    e.preventDefault()
+                                                    e.currentTarget.classList.remove("bg-gray-100", "scale-105")
+                                                    const optionKey = e.dataTransfer.getData("text/plain")
+                                                    if (optionKey) {
+                                                      const fullQuestionId = `${question.id}_flow_${stepNum}`
+                                                      handleAnswerChange(flowChartQuestionId, optionKey, fullQuestionId)
+                                                    }
+                                                  }}
+                                                  onClick={() => {
+                                                    if (currentAnswer) {
+                                                      const fullQuestionId = `${question.id}_flow_${stepNum}`
+                                                      handleAnswerChange(flowChartQuestionId, null, fullQuestionId)
+                                                    }
+                                                  }}
+                                                  title={
+                                                    currentAnswer
+                                                      ? "Click to remove or drag back to options"
+                                                      : "Drag option here"
+                                                  }
+                                                >
+                                                  <span className="bg-gray-700 text-white px-2 py-1 rounded text-xs font-medium flex-shrink-0">
+                                                    {stepQuestionNum}
                                                   </span>
-                                                )}
-                                              </React.Fragment>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          <div className="text-base text-gray-900 leading-relaxed">{stepText}</div>
-                                        )}
-                                      </div>
-                                      {index < Object.keys(question.choices).length - 1 && (
-                                        <div className="flex justify-center">
-                                          <div className="w-0.5 h-6 bg-gray-400"></div>
-                                          <div className="absolute w-0 h-0 border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-gray-400 mt-6"></div>
+                                                  {currentAnswer ? (
+                                                    <span className="font-semibold text-gray-700">
+                                                      {selectedOptionText}
+                                                    </span>
+                                                  ) : (
+                                                    <span className="text-gray-400 text-sm">Drop here</span>
+                                                  )}
+                                                </span>
+                                                {afterBlank}
+                                              </>
+                                            )
+                                          })()}
                                         </div>
+                                      ) : (
+                                        <div className="text-base text-gray-900 leading-relaxed">{stepText}</div>
                                       )}
-                                    </React.Fragment>
-                                  )
-                                })}
-                              </div>
+                                    </div>
+                                    {index < Object.keys(question.choices).length - 1 && (
+                                      <div className="flex justify-center relative h-8">
+                                        <div className="w-0.5 h-6 bg-gray-400"></div>
+                                        <div className="absolute bottom-0 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-gray-400"></div>
+                                      </div>
+                                    )}
+                                  </React.Fragment>
+                                )
+                              })}
                             </div>
+                          </div>
 
-                            {/* Options Panel */}
-                            <div className="lg:col-span-1">
-                              <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 sticky top-4">
-                                <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
-                                <div className="space-y-2">
-                                  {question.options &&
-                                    Array.isArray(question.options) &&
-                                    question.options
-                                      .filter((optionKey: string) => {
-                                        const flowChartQuestionId = question.id.toString()
-                                        const allAnswers = answers[flowChartQuestionId]
-                                        if (!allAnswers || typeof allAnswers !== "object") return true
-
-                                        const isUsed = Object.values(allAnswers).includes(optionKey)
-                                        return !isUsed
-                                      })
-                                      .map((optionKey: string) => (
-                                        <div
-                                          key={optionKey}
-                                          draggable
-                                          onDragStart={(e) => {
-                                            e.dataTransfer.setData("text/plain", optionKey)
-                                            e.currentTarget.classList.add("opacity-50")
-                                          }}
-                                          onDragEnd={(e) => {
-                                            e.currentTarget.classList.remove("opacity-50")
-                                          }}
-                                          className="bg-white border-2 border-gray-300 rounded-lg p-3 cursor-move hover:border-gray-600 hover:shadow-md transition-all active:scale-95"
-                                        >
-                                          <div className="flex items-center justify-center">
-                                            <span className="text-gray-900 font-medium text-base">{optionKey}</span>
-                                          </div>
-                                        </div>
-                                      ))}
-                                </div>
+                          {/* Options Panel */}
+                          <div className="lg:col-span-1">
+                            <div
+                              className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 sticky top-4"
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                const removeFrom = e.dataTransfer.types.includes("removefrom")
+                                if (removeFrom) {
+                                  e.currentTarget.classList.add("bg-blue-50", "border-blue-400")
+                                }
+                              }}
+                              onDragLeave={(e) => {
+                                e.currentTarget.classList.remove("bg-blue-50", "border-blue-400")
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                e.currentTarget.classList.remove("bg-blue-50", "border-blue-400")
+                                const removeFrom = e.dataTransfer.getData("removeFrom")
+                                const removeFromQuestion = e.dataTransfer.getData("removeFromQuestion")
+                                if (removeFrom && removeFromQuestion) {
+                                  const fullQuestionId = `${removeFromQuestion}_flow_${removeFrom}`
+                                  handleAnswerChange(removeFromQuestion, null, fullQuestionId)
+                                }
+                              }}
+                            >
+                              <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
+                              <div className="space-y-2">
                                 {question.options &&
                                   Array.isArray(question.options) &&
-                                  question.options.filter((optionKey: string) => {
-                                    const flowChartQuestionId = question.id.toString()
-                                    const allAnswers = answers[flowChartQuestionId]
-                                    if (!allAnswers || typeof allAnswers !== "object") return true
-                                    const isUsed = Object.values(allAnswers).includes(optionKey)
-                                    return !isUsed
-                                  }).length === 0 && (
-                                    <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
-                                  )}
+                                  question.options
+                                    .filter((optionKey: string) => {
+                                      const flowChartQuestionId = question.id.toString()
+                                      const allAnswers = answers[flowChartQuestionId]
+                                      if (!allAnswers || typeof allAnswers !== "object") return true
+
+                                      const isUsed = Object.values(allAnswers).includes(optionKey)
+                                      return !isUsed
+                                    })
+                                    .map((optionKey: string) => (
+                                      <div
+                                        key={optionKey}
+                                        draggable
+                                        onDragStart={(e) => {
+                                          e.dataTransfer.setData("text/plain", optionKey)
+                                          e.currentTarget.classList.add("opacity-50")
+                                        }}
+                                        onDragEnd={(e) => {
+                                          e.currentTarget.classList.remove("opacity-50")
+                                        }}
+                                        className="bg-white border-2 border-gray-300 rounded-lg p-3 cursor-move hover:border-gray-600 hover:shadow-md transition-all active:scale-95"
+                                      >
+                                        <div className="flex items-center justify-center">
+                                          <span className="text-gray-900 font-medium text-base">{optionKey}</span>
+                                        </div>
+                                      </div>
+                                    ))}
                               </div>
+                              {question.options &&
+                                Array.isArray(question.options) &&
+                                question.options.filter((optionKey: string) => {
+                                  const flowChartQuestionId = question.id.toString()
+                                  const allAnswers = answers[flowChartQuestionId]
+                                  if (!allAnswers || typeof allAnswers !== "object") return true
+                                  const isUsed = Object.values(allAnswers).includes(optionKey)
+                                  return !isUsed
+                                }).length === 0 && (
+                                  <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
+                                )}
                             </div>
                           </div>
                         </div>
-                      )}
+                      </div>
+                    )}
 
-                      {question.q_type === "NOTE_COMPLETION" && question.options && (
-                        <div className="space-y-4">
-                          <div className="flex flex-row items-start gap-3 mb-4">
-                            <div className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0">
-                              {questionStartNum}
-                              {questionCount > 1 && ` - ${questionEndNum}`}
-                            </div>
+                    {question.q_type === "NOTE_COMPLETION" && question.options && (
+                      <div className="space-y-4">
+                        <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-6">
+                          {(() => {
+                            const optionsText =
+                              typeof question.options === "string" ? question.options : JSON.stringify(question.options)
 
-                            {question.q_text && (
-                              <div
-                                className="text-base sm:text-lg text-gray-900 font-medium leading-relaxed flex-1"
-                                dangerouslySetInnerHTML={{ __html: question.q_text }}
-                              />
-                            )}
-                          </div>
+                            const parts = optionsText.split(/(____+)/)
+                            let currentInputIndex = 0
 
-                          <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-6">
-                            {(() => {
-                              const optionsText =
-                                typeof question.options === "string"
-                                  ? question.options
-                                  : JSON.stringify(question.options)
+                            return parts.map((part, index) => {
+                              if (part.match(/____+/)) {
+                                const questionNum = thisQuestionStartNum + currentInputIndex
+                                const inputId = `${question.id}_note_${currentInputIndex}`
+                                const currentAnswer = answers[inputId] || ""
+                                currentInputIndex++
 
-                              const parts = optionsText.split(/(____+)/)
-                              let currentInputIndex = 0
-
-                              return parts.map((part, index) => {
-                                if (part.match(/____+/)) {
-                                  const questionNum = thisQuestionStartNum + currentInputIndex
-                                  const inputId = `${question.id}_note_${currentInputIndex}`
-                                  const currentAnswer = answers[inputId] || ""
-                                  currentInputIndex++
-
-                                  return (
-                                    <span key={index} className="inline-flex items-center mx-1">
-                                      <Input
-                                        value={currentAnswer}
-                                        onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
-                                        className="inline-block w-32 px-3 py-1.5 text-center text-sm bg-gray-50 border-2 border-gray-400 focus:border-gray-600 focus:bg-white rounded"
-                                        placeholder={questionNum.toString()}
-                                      />
-                                    </span>
-                                  )
-                                } else {
-                                  return (
-                                    <span
-                                      key={index}
-                                      className="text-gray-900"
-                                      dangerouslySetInnerHTML={{ __html: part }}
+                                return (
+                                  <span key={index} className="inline-flex items-center mx-1">
+                                    <Input
+                                      value={currentAnswer}
+                                      onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
+                                      className="inline-block w-32 px-3 py-1.5 text-center text-sm bg-gray-50 border-2 border-gray-400 focus:border-gray-600 focus:bg-white rounded"
+                                      placeholder={questionNum.toString()}
                                     />
-                                  )
-                                }
-                              })
-                            })()}
-                          </div>
+                                  </span>
+                                )
+                              } else {
+                                return (
+                                  <span
+                                    key={index}
+                                    className="text-gray-900"
+                                    dangerouslySetInnerHTML={{ __html: part }}
+                                  />
+                                )
+                              }
+                            })
+                          })()}
                         </div>
-                      )}
+                      </div>
+                    )}
 
-                      {![
-                        "TFNG",
-                        "TRUE_FALSE_NOT_GIVEN",
-                        "MCQ_SINGLE",
-                        "MCQ_MULTI",
-                        "SENTENCE_COMPLETION",
-                        "SENTENCE_ENDINGS",
-                        "MATCHING_INFORMATION",
-                        "TABLE_COMPLETION",
-                        "MAP_LABELING",
-                        "FLOW_CHART",
-                        "NOTE_COMPLETION",
-                      ].includes(question.q_type || "") && (
-                        <div className="space-y-2">
-                          <Input
-                            value={currentAnswer || ""}
-                            onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                            className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
-                            placeholder="Answer"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })
-              })()}
-            </div>
+                    {![
+                      "TFNG",
+                      "TRUE_FALSE_NOT_GIVEN",
+                      "MCQ_SINGLE",
+                      "MCQ_MULTI",
+                      "SENTENCE_COMPLETION",
+                      "SENTENCE_ENDINGS",
+                      "MATCHING_INFORMATION",
+                      "TABLE_COMPLETION",
+                      "MAP_LABELING",
+                      "FLOW_CHART",
+                      "NOTE_COMPLETION",
+                    ].includes(question.q_type || "") && (
+                      <div className="space-y-2">
+                        <Input
+                          value={currentAnswer || ""}
+                          onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                          className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
+                          placeholder="Answer"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            })()}
           </div>
         </div>
       </div>
@@ -2588,6 +2760,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           </svg>
         </button>
       </div>
+
+      <AlertComponent />
+      <CompletionModal isOpen={showCompletionModal} onClose={() => setShowCompletionModal(false)} />
     </div>
   )
 }

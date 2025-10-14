@@ -123,6 +123,21 @@ const MockTestPage = () => {
   }, [params.id, router])
 
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && examData) {
+        console.log("[v0] Page became visible, refreshing completion status")
+        checkAllSectionsCompletion()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [examData])
+
+  useEffect(() => {
     if (examData) {
       const examId = params.id as string
       const actualPassword = examData.password
@@ -177,7 +192,7 @@ const MockTestPage = () => {
     try {
       setIsLoading(true)
 
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
       const response = await fetch(`${API_BASE_URL}/exams/${params.id}`)
 
       if (!response.ok) {
@@ -246,7 +261,7 @@ const MockTestPage = () => {
 
   const handlePasswordSuccess = () => {
     const examId = params.id as string
-    const actualPassword = examData?.password || "mock123"
+    const actualPassword = examData?.password
     savePasswordToStorage(examId, actualPassword)
 
     setIsAuthenticated(true)
@@ -332,12 +347,12 @@ const MockTestPage = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-4">
               <Link
-                href="/dashboard"
+                href="/join"
                 className="flex items-center gap-1 sm:gap-2 text-blue-300 hover:text-white transition-colors text-sm sm:text-base"
               >
                 <ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">Back to Dashboard</span>
-                <span className="sm:hidden">Back</span>
+                <span className="hidden sm:inline">Back to join</span>
+                
               </Link>
               <div className="flex items-center gap-2 sm:gap-3">
                 <Image

@@ -19,6 +19,11 @@ import {
   DropdownMenuTrigger,
 } from "../../../../../components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../../../../components/ui/dialog"
+import {
+  markSectionCompleted,
+  areAllSectionsCompleted,
+  checkSectionCompletionAPI,
+} from "../../../../../lib/test-strotage"
 
 interface RQuestion {
   id: number
@@ -103,6 +108,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   const examId = resolvedParams.examId
 
   const [testData, setTestData] = useState<TestData | null>(null)
+  const [backendExamId, setBackendExamId] = useState<string | null>(null)
   const [currentPart, setCurrentPart] = useState(1)
   const [answers, setAnswers] = useState<Record<string, string | Record<string, string> | string[]>>({})
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
@@ -111,8 +117,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   const [showSubmitLoading, setShowSubmitLoading] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isCompleted, setIsCompleted] = useState(false)
+  const [showCompletionModal, setShowCompletionModal] = useState(false)
   const [expandedPart, setExpandedPart] = useState<number | null>(null)
   const [showOptionsModal, setShowOptionsModal] = useState(false)
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [questionNumbers, setQuestionNumbers] = useState<Record<string, number>>({})
   const { showAlert, AlertComponent, setAlert } = useCustomAlert()
 
@@ -246,8 +254,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
   useEffect(() => {
     const fetchTestData = async () => {
+      setIsLoading(true)
       try {
-        setIsLoading(true)
         const apiUrl = process.env.NEXT_PUBLIC_API_URL
         if (!apiUrl) {
           throw new Error("API URL not configured")
@@ -260,6 +268,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
         const data: TestData = await response.json()
         setTestData(data)
+
+        if (data.exam_id) {
+          setBackendExamId(data.exam_id)
+          console.log("[v0] Backend exam_id:", data.exam_id)
+        }
 
         if (data?.questions && data?.passages) {
           const numbers: Record<string, number> = {}
@@ -339,7 +352,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         const initialTime = 3600
         setTimeRemaining(initialTime)
 
-        const answersKey = `answers_${examId}_reading`
+        const answersKey = `answers_${examId}_reading_${userId}`
         const savedAnswers = localStorage.getItem(answersKey)
         if (savedAnswers) {
           try {
@@ -422,7 +435,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     }
 
     fetchTestData()
-  }, [examId])
+  }, [examId, userId]) // Added userId to dependency array
 
   useEffect(() => {
     if (timeRemaining === null || timeRemaining <= 0) return
@@ -449,7 +462,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     }
     setAnswers(newAnswers)
 
-    const answersKey = `answers_${examId}_reading`
+    const answersKey = `answers_${examId}_reading_${userId}`
     const existingAnswers = localStorage.getItem(answersKey)
     let answersArray: any[] = []
 
@@ -473,6 +486,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
     console.log("[v0] Question info:", { questionGroupId, rQuestionId, questionType, question })
 
+    const examIdToUse = backendExamId || examId
+
     if (!answer || (Array.isArray(answer) && answer.length === 0) || answer.toString().trim() === "") {
       console.log("[v0] Deleting answer for:", questionId)
 
@@ -492,7 +507,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           return true
         })
       } else if (questionId.includes("_row_")) {
-        const rowIndex = Number.parseInt(parts[parts.length - 1])
+        const rowIndex = Number.parseInt(parts[parts.length - 1]) + 1
         answersArray = answersArray.filter((item: any) => {
           if (item.question_type === "MATCHING_INFORMATION" && item.answer) {
             return Object.keys(item.answer)[0] !== rowIndex.toString()
@@ -546,7 +561,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         userId: getUserId(),
         questionId: Number.parseInt(questionGroupId),
         r_questionsID: Number.parseInt(rQuestionId),
-        examId: Number.parseInt(examId),
+        examId: Number.parseInt(examIdToUse),
         question_type: "TABLE_COMPLETION",
         answer: {
           [cellPosition]: answer,
@@ -577,7 +592,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           userId: getUserId(),
           questionId: matchingQuestionGroup?.id || Number.parseInt(questionGroupId),
           r_questionsID: matchingQuestion.id,
-          examId: Number.parseInt(examId),
+          examId: Number.parseInt(examIdToUse),
           question_type: "MATCHING_HEADINGS",
           answer: {
             [positionIndex]: answer,
@@ -604,7 +619,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         userId: getUserId(),
         questionId: Number.parseInt(questionGroupId),
         r_questionsID: Number.parseInt(rQuestionId),
-        examId: Number.parseInt(examId),
+        examId: Number.parseInt(examIdToUse),
         question_type: "MATCHING_INFORMATION",
         answer: {
           [rowIndex]: answer,
@@ -631,7 +646,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           userId: getUserId(),
           questionId: Number.parseInt(questionGroupId),
           r_questionsID: Number.parseInt(rQuestionId),
-          examId: Number.parseInt(examId),
+          examId: Number.parseInt(examIdToUse),
           question_type: "MCQ_MULTI",
           answer: selectedOption,
         })
@@ -651,7 +666,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         userId: getUserId(),
         questionId: Number.parseInt(questionGroupId),
         r_questionsID: Number.parseInt(rQuestionId),
-        examId: Number.parseInt(examId),
+        examId: Number.parseInt(examIdToUse),
         question_type: questionType,
         answer: answer,
       })
@@ -671,7 +686,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         userId: getUserId(),
         questionId: Number.parseInt(questionGroupId),
         r_questionsID: Number.parseInt(rQuestionId),
-        examId: Number.parseInt(examId),
+        examId: Number.parseInt(examIdToUse),
         question_type: questionType,
         answer: answer,
       })
@@ -695,45 +710,94 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   }
 
   const handleSubmit = async () => {
-    if (isSubmitted || isSubmitting || showSubmitLoading || !user?.id) {
+    console.log("[v0] Submit button clicked")
+    console.log("[v0] Current state:", { isSubmitted, isSubmitting, showSubmitLoading })
+
+    const currentUserId = getUserId()
+    console.log("[v0] Current user ID:", currentUserId)
+
+    if (isSubmitted || isSubmitting || showSubmitLoading) {
+      console.log("[v0] Submit blocked by state check")
       return
     }
 
+    if (!currentUserId) {
+      console.log("[v0] No user ID found")
+      setAlert({
+        title: "Error",
+        message: "User not found. Please log in again.",
+        type: "error",
+      })
+      return
+    }
+
+    console.log("[v0] Opening confirmation modal")
+    setShowConfirmModal(true)
+  }
+
+  const submitAnswers = async () => {
+    console.log("[v0] Starting submission process")
     setIsSubmitting(true)
     setShowSubmitLoading(true)
 
     try {
-      const answersKey = `answers_${examId}_reading`
-      const savedAnswers = localStorage.getItem(answersKey)
+      const currentUserId = getUserId()
+      const answersKey = `answers_${examId}_reading_${currentUserId}`
 
-      if (!savedAnswers) {
+      console.log("[v0] Looking for answers with key:", answersKey)
+
+      const answersData = localStorage.getItem(answersKey)
+
+      if (!answersData) {
+        console.log("[v0] No answers found in localStorage")
         throw new Error("No answers found")
       }
 
-      const answersArray = JSON.parse(savedAnswers)
+      let allAnswers: any[] = []
+      try {
+        allAnswers = JSON.parse(answersData)
+        if (!Array.isArray(allAnswers)) {
+          throw new Error("Invalid answers format")
+        }
+      } catch (error) {
+        console.error("[v0] Error parsing answers:", error)
+        throw new Error("Failed to parse answers")
+      }
 
-      console.log("[v0] Submitting answers individually:", answersArray.length, "answers")
+      if (allAnswers.length === 0) {
+        console.log("[v0] Answers array is empty")
+        throw new Error("No answers found")
+      }
+
+      console.log("[v0] Found", allAnswers.length, "answers to submit")
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL
       if (!apiUrl) {
+        console.error("[v0] API URL not configured")
         throw new Error("API URL not configured")
       }
+
+      console.log("[v0] API URL:", apiUrl)
 
       let successCount = 0
       let failCount = 0
       const errors: string[] = []
 
-      for (const answer of answersArray) {
+      const examIdToUse = backendExamId || examId
+
+      for (const answer of allAnswers) {
         try {
+          console.log("[v0] Submitting answer:", answer)
+
           const response = await fetch(`${apiUrl}/reading-answers`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              userId: answer.userId,
+              userId: currentUserId,
               questionId: answer.questionId,
-              examId: answer.examId,
+              examId: answer.examId || Number.parseInt(examIdToUse),
               answer: answer.answer,
               r_questionsID: answer.r_questionsID,
               question_type: answer.question_type,
@@ -763,30 +827,58 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       if (failCount > 0) {
         setAlert({
           title: "Partial Submission",
-          message: `${successCount} answers submitted successfully, ${failCount} failed. Errors: ${errors.join(", ")}`,
+          message: `${successCount} answers submitted successfully, ${failCount} failed.`,
           type: "warning",
         })
       }
 
-      // Remove from localStorage only if at least some answers were successful
       if (successCount > 0) {
         localStorage.removeItem(answersKey)
+        console.log("[v0] Cleared localStorage key:", answersKey)
+
         setIsSubmitted(true)
         setIsCompleted(true)
-        router.push(`/mock/${examId}`)
+
+        const readingCompleted = await checkSectionCompletionAPI(currentUserId, examIdToUse, "reading")
+        console.log("[v0] Reading completion verified from API:", readingCompleted)
+
+        if (readingCompleted) {
+          markSectionCompleted(examIdToUse, "reading")
+          console.log("[v0] Marked reading section as completed")
+        } else {
+          console.log("[v0] Reading section not marked as completed - API verification failed")
+        }
+
+        if (areAllSectionsCompleted(examIdToUse)) {
+          console.log("[v0] All sections completed! Showing celebration modal")
+          setShowCompletionModal(true)
+        } else {
+          setAlert({
+            title: "Submission Successful",
+            message: `${successCount} answers submitted successfully!`,
+            type: "success",
+          })
+
+          const redirectExamId = backendExamId || examId
+          setTimeout(() => {
+            console.log("[v0] Redirecting to mock exam page")
+            router.push(`/mock/${redirectExamId}`)
+          }, 1500)
+        }
       } else {
         throw new Error("All submissions failed")
       }
     } catch (error) {
-      console.error("Error submitting test:", error)
+      console.error("[v0] Error submitting test:", error)
       setAlert({
         title: "Submission Failed",
-        message: "There was an error submitting your test. Please try again.",
+        message: error instanceof Error ? error.message : "There was an error submitting your test. Please try again.",
         type: "error",
       })
     } finally {
       setIsSubmitting(false)
       setShowSubmitLoading(false)
+      setShowConfirmModal(false)
     }
   }
 
@@ -2007,7 +2099,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   return (
     <div className={`flex flex-col h-screen ${colorStyles.bg}`}>
       {/* Header */}
-      <div className="border-b bg-white">
+      <div className="border-b">
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-4">
             <div className="text-2xl font-bold text-red-600">IELTS</div>
@@ -2801,6 +2893,33 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       </div>
 
       {AlertComponent}
+
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Confirm Submission</h2>
+            <p className="text-gray-600 dark:text-gray-300 mb-6">
+              Are you sure you want to submit your test? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitAnswers}
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSubmitting ? "Submitting..." : "Yes, Submit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
