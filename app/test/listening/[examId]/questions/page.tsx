@@ -19,13 +19,14 @@ interface LQuestion {
   id: number
   listening_questions_id: number
   q_type: string
+  q_type_detail?: string // For specific question types like MAP_LABELING
   q_text: string
   instruction?: string // Added instruction field
   options?: any
   correct_answers?: string | string[]
   columns?: any
-  rows?: any
-  choices?: any
+  rows?: any // For table completion, matching info, map labeling
+  choices?: any // For matching info, flow chart, map labeling
   answers?: any
   match_pairs?: any
   photo?: string | null
@@ -63,7 +64,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
   const [testData, setTestData] = useState<ListeningTestData | null>(null)
   const [currentPart, setCurrentPart] = useState(1)
   const [expandedPart, setExpandedPart] = useState<number | null>(null)
-  const [answers, setAnswers] = useState<Record<number, any>>({})
+  const [answers, setAnswers] = useState<Record<string, any>>({}) // Consolidated state for answers
   const [timeRemaining, setTimeRemaining] = useState<number>(120) // Always show 2:00 initially
   const [timerActive, setTimerActive] = useState(false) // Don't start timer until audio ends
   const [isLoading, setIsLoading] = useState(true)
@@ -480,7 +481,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           l_questionsID: actualLQuestionId,
         })
       } else if (questionIdStr.includes("_table_")) {
-        const parts = questionId.split("_table_")
+        const parts = question.split("_table_")
         const baseQuestionId = parts[0]
         const [rowIndex, cellIndex] = parts[1].split("_").map(Number)
 
@@ -1264,6 +1265,8 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     return formatAudioTime(audioDuration)
   }
 
+  const [userAnswers, setUserAnswers] = useState<Record<string, any>>({}) // Renamed for clarity
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const answersKey = `listening_answers_${examId}_${userId}`
@@ -1274,54 +1277,12 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           const parsedAnswers = JSON.parse(savedAnswers)
           const loadedAnswers: Record<string, any> = {}
 
-          getAllQuestions().forEach((question) => {
-            const questionId = question.id.toString()
-
-            if (question.q_type === "TABLE_COMPLETION") {
-              // Load table answers from separate entry
-              const tableAnswersKey = `${questionId}_answer`
-              const tableAnswers = parsedAnswers[tableAnswersKey]
-
-              if (tableAnswers && typeof tableAnswers === "object") {
-                loadedAnswers[tableAnswersKey] = tableAnswers
-              }
-            } else if (question.q_type === "MATCHING_INFORMATION") {
-              // Existing loading logic for MATCHING_INFORMATION
-              const matchingAnswerKey = `${questionId}_matching_${question.rows?.length}` // Assuming unique key for matching
-              if (parsedAnswers[matchingAnswerKey]) {
-                loadedAnswers[matchingAnswerKey] = parsedAnswers[matchingAnswerKey]
-              }
-            } else if (question.q_type === "FLOW_CHART") {
-              // Existing loading logic for FLOW_CHART
-              if (parsedAnswers[questionId] && typeof parsedAnswers[questionId] === "object") {
-                loadedAnswers[questionId] = parsedAnswers[questionId]
-              }
-            } else if (question.q_type === "NOTE_COMPLETION") {
-              // Existing loading logic for NOTE_COMPLETION
-              const allQuestions = getAllQuestions()
-              const baseQuestionIndex = allQuestions.findIndex((q) => q.id === question.id)
-              let questionCounter = 1
-              for (let i = 0; i < baseQuestionIndex; i++) {
-                questionCounter += getQuestionCount(allQuestions[i])
-              }
-              const actualQuestionNumber = questionCounter
-              const noteAnswerKey = `${questionId}_note_${actualQuestionNumber}` // Assuming unique key
-              if (parsedAnswers[noteAnswerKey]) {
-                loadedAnswers[noteAnswerKey] = parsedAnswers[noteAnswerKey]
-              }
-            } else if (question.q_type === "MCQ_MULTI") {
-              // Existing loading logic for MCQ_MULTI
-              if (Array.isArray(parsedAnswers[questionId])) {
-                loadedAnswers[questionId] = parsedAnswers[questionId]
-              }
-            } else {
-              // Existing loading logic for other types
-              if (parsedAnswers[questionId] !== undefined) {
-                loadedAnswers[questionId] = parsedAnswers[questionId]
-              }
-            }
+          // Direct mapping from localStorage to state
+          Object.keys(parsedAnswers).forEach((key) => {
+            loadedAnswers[key] = parsedAnswers[key]
           })
-          setAnswers(loadedAnswers)
+          setUserAnswers(loadedAnswers) // Use the renamed state setter
+          setAnswers(loadedAnswers) // Also update the original 'answers' state for compatibility
         } catch (error) {
           console.error("Error loading answers:", error)
         }
@@ -1381,10 +1342,22 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         delete newAnswers[tableAnswersKey]
         return newAnswers
       })
+      setUserAnswers((prev) => {
+        // Update the new state variable
+        const newAnswers = { ...prev }
+        delete newAnswers[tableAnswersKey]
+        return newAnswers
+      })
     } else {
       // Other question types remain unchanged
       delete answersObject[questionIdentifier]
       setAnswers((prev) => {
+        const newAnswers = { ...prev }
+        delete newAnswers[questionIdentifier]
+        return newAnswers
+      })
+      setUserAnswers((prev) => {
+        // Update the new state variable
         const newAnswers = { ...prev }
         delete newAnswers[questionIdentifier]
         return newAnswers
@@ -1699,9 +1672,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                 const questionStartNum = sequentialQuestionNumber
                 const questionEndNum = sequentialQuestionNumber + questionCount - 1
 
-                // Store the starting number for this question (for nested rendering)
-                const thisQuestionStartNum = sequentialQuestionNumber
-
                 // Increment the counter for the next question
                 sequentialQuestionNumber += questionCount
 
@@ -1734,6 +1704,17 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                     ref={(el) => (questionRefs.current[question.id] = el)}
                     className="space-y-4 p-4 sm:p-6 border rounded-lg bg-white border-gray-200"
                   >
+                    {/* Questions Header - Show for specific question types */}
+                    {(["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING"].includes(question.q_type || "") ||
+                      (question.q_type === "NOTE_COMPLETION" && questionCount !== 10)) && (
+                      <div className="mb-4">
+                        <h4 className="text-base sm:text-lg font-bold text-gray-900 mb-2">
+                          Questions {questionCount > 1 ? `${questionStartNum}–${questionEndNum}` : questionStartNum}
+                        </h4>
+                      </div>
+                    )}
+
+                    {/* Instruction - Show if it's first in group and instruction exists */}
                     {isFirstInGroup && questionGroup?.instruction && (
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                         <div
@@ -1743,17 +1724,14 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
 
-                    {["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING", "NOTE_COMPLETION"].includes(
-                      question.q_type || "",
-                    ) && (
-                      <div className="mb-4">
-                        <h4 className="text-base sm:text-lg font-bold text-gray-900 mb-2">
-                          Questions {questionCount > 1 ? `${questionStartNum}–${questionEndNum}` : questionStartNum}
-                        </h4>
-                        {question.q_text && <p className="text-gray-700 mb-2">{question.q_text}</p>}
-                      </div>
-                    )}
+                    {/* q_text - Show if exists for specific question types */}
+                    {(["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING"].includes(question.q_type || "") ||
+                      (question.q_type === "NOTE_COMPLETION" && questionCount !== 10)) &&
+                      question.q_text && (
+                        <div className="text-gray-700 mb-4" dangerouslySetInnerHTML={{ __html: question.q_text }} />
+                      )}
 
+                    {/* Question number and q_text for other question types */}
                     {!["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING", "NOTE_COMPLETION", "FLOW_CHART"].includes(
                       question.q_type || "",
                     ) && (
@@ -1761,49 +1739,116 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         <div className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0">
                           {questionCount > 1 ? `${questionStartNum} - ${questionEndNum}` : questionStartNum}
                         </div>
-                        {question.q_text && <p className="text-gray-700 flex-1">{question.q_text}</p>}
+                        {question.q_text && (
+                          <div className="text-gray-700 flex-1" dangerouslySetInnerHTML={{ __html: question.q_text }} />
+                        )}
                       </div>
                     )}
 
-                    {question.q_type === "TFNG" ||
-                      (question.q_type === "TRUE_FALSE_NOT_GIVEN" && (
-                        <div className="space-y-3">
-                          <RadioGroup
-                            value={currentAnswer || ""}
-                            onValueChange={(value) => handleAnswerChange(questionId, value)}
-                            className="space-y-3"
-                          >
-                            <div className="flex items-center space-x-3">
-                              <RadioGroupItem value="TRUE" id={`q${question.id}-true`} />
-                              <Label
-                                htmlFor={`q${question.id}-true`}
-                                className="cursor-pointer text-sm sm:text-base text-gray-900"
-                              >
-                                TRUE
-                              </Label>
+                {question.q_type === "TFNG" && question.photo && question.choices && question.options && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          {/* Map Image - Left Side */}
+                          <div className="lg:col-span-1">
+                            <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+                              <img
+                                src={`${process.env.NEXT_PUBLIC_API_URL}/uploads/l_questions/${question.photo}`}
+                                alt="Map"
+                                className="w-full h-auto"
+                              />
                             </div>
-                            <div className="flex items-center space-x-3">
-                              <RadioGroupItem value="FALSE" id={`q${question.id}-false`} />
-                              <Label
-                                htmlFor={`q${question.id}-false`}
-                                className="cursor-pointer text-sm sm:text-base text-gray-900"
-                              >
-                                FALSE
-                              </Label>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <RadioGroupItem value="NOT_GIVEN" id={`q${question.id}-ng`} />
-                              <Label
-                                htmlFor={`q${question.id}-ng`}
-                                className="cursor-pointer text-sm sm:text-base text-gray-900"
-                              >
-                                NOT GIVEN
-                              </Label>
-                            </div>
-                          </RadioGroup>
-                        </div>
-                      ))}
+                          </div>
 
+                          {/* Table with Radio Buttons - Right Side */}
+                          <div className="lg:col-span-1">
+                            <div className="border-2 border-gray-300 rounded-lg overflow-hidden">
+                              {(() => {
+                                let choicesData: Record<string, string> = {}
+                                let optionsArray: string[] = []
+
+                                // Parse choices
+                                if (question.choices) {
+                                  if (typeof question.choices === "object") {
+                                    choicesData = question.choices
+                                  } else if (typeof question.choices === "string") {
+                                    try {
+                                      choicesData = JSON.parse(question.choices)
+                                    } catch (e) {
+                                      console.error("[v0] Failed to parse MAP_LABELING choices:", e)
+                                    }
+                                  }
+                                }
+
+                                // Parse options
+                                if (question.options) {
+                                  if (Array.isArray(question.options)) {
+                                    optionsArray = question.options
+                                  } else if (typeof question.options === "string") {
+                                    try {
+                                      optionsArray = JSON.parse(question.options)
+                                    } catch (e) {
+                                      console.error("[v0] Failed to parse MAP_LABELING options:", e)
+                                    }
+                                  }
+                                }
+
+                                return (
+                                  <table className="w-full">
+                                    <thead>
+                                      <tr className="border-b-2 border-gray-300">
+                                        <th className="p-3 text-left bg-gray-50 font-semibold text-gray-900"></th>
+                                        {optionsArray.map((option) => (
+                                          <th
+                                            key={option}
+                                            className="p-3 text-center bg-gray-50 font-semibold text-gray-900 border-l border-gray-300"
+                                          >
+                                            {option}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {Object.entries(choicesData).map(([choiceNum, choiceText], index) => {
+                                        const questionId = `${question.id}_map_${choiceNum}`
+                                        const currentAnswer = answers[questionId]
+                                        const actualQuestionNum = questionStartNum + index
+
+                                        return (
+                                          <tr key={choiceNum} className="border-b border-gray-200 hover:bg-gray-50">
+                                            <td className="p-3 font-medium text-gray-900">
+                                              <div className="flex items-center gap-2">
+                                                <span className="bg-gray-700 text-white w-6 h-6 rounded flex items-center justify-center text-sm font-bold flex-shrink-0">
+                                                  {actualQuestionNum}
+                                                </span>
+                                                <span>{choiceText}</span>
+                                              </div>
+                                            </td>
+                                            {optionsArray.map((option) => (
+                                              <td key={option} className="p-3 text-center border-l border-gray-200">
+                                                <input
+                                                  type="radio"
+                                                  name={questionId}
+                                                  value={option}
+                                                  checked={currentAnswer === option}
+                                                  onChange={(e) => {
+                                                    handleAnswerChange(questionId, e.target.value, questionId)
+                                                  }}
+                                                  className="w-5 h-5 cursor-pointer accent-blue-600"
+                                                />
+                                              </td>
+                                            ))}
+                                          </tr>
+                                        )
+                                      })}
+                                    </tbody>
+                                  </table>
+                                )
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {question.q_type === "MCQ_SINGLE" && optionsArray.length > 0 && (
                       <div className="space-y-3">
                         <RadioGroup
@@ -1833,7 +1878,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                             const currentAnswersArray = currentAnswer
                               ? Array.isArray(currentAnswer)
                                 ? currentAnswer
-                                : currentAnswer.split(",").filter(Boolean)
+                                : typeof currentAnswer === "string"
+                                  ? currentAnswer.split(",").filter(Boolean)
+                                  : [String(currentAnswer)]
                               : []
 
                             const correctAnswersCount = Array.isArray(question.correct_answers)
@@ -1866,7 +1913,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                   htmlFor={`q${question.id}-${option.key}`}
                                   className="cursor-pointer text-sm sm:text-base text-gray-900"
                                 >
-                                  {option.text}
+                                  <span dangerouslySetInnerHTML={{ __html: option.text }} />
                                 </Label>
                               </div>
                             )
@@ -1886,7 +1933,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                               // No underscores, just show input below
                               return (
                                 <>
-                                  <p className="mb-2">{text}</p>
+                                  <div className="mb-2" dangerouslySetInnerHTML={{ __html: text }} />
                                   <Input
                                     value={currentAnswer || ""}
                                     onChange={(e) => handleAnswerChange(questionId, e.target.value)}
@@ -1902,7 +1949,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                               <div className="flex flex-wrap items-center gap-2">
                                 {parts.map((part, index) => (
                                   <React.Fragment key={index}>
-                                    <span>{part}</span>
+                                    <span dangerouslySetInnerHTML={{ __html: part }} />
                                     {index < parts.length - 1 && (
                                       <Input
                                         value={currentAnswer || ""}
@@ -1932,7 +1979,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                           </div>
                         </div>
                         <div className="border-t pt-3">
-                          <p className="text-xs text-gray-600 mb-2">Choose from:</p>
+                          <p className="text-xs text-gray-600 mb-2">Choices:</p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {optionsArray.map((option, index) => (
                               <Button
@@ -1982,7 +2029,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                       <span className="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium">
                                         {questionStartNum + index}
                                       </span>
-                                      <span className="font-medium">{rowText}</span>
+                                      <span className="font-medium" dangerouslySetInnerHTML={{ __html: rowText }} />
                                     </div>
                                   </td>
                                   {question.choices &&
@@ -2007,7 +2054,13 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         </div>
 
                         <div className="mt-6">
-                          <h5 className="font-semibold mb-3 text-black">{question.q_text || "Choices:"}</h5>
+                          <h5 className="font-semibold mb-3 text-black">
+                            {question.q_text ? (
+                              <span dangerouslySetInnerHTML={{ __html: question.q_text }} />
+                            ) : (
+                              "Choices:"
+                            )}
+                          </h5>
                           <div className="overflow-x-auto">
                             <table className="w-full border text-base border-gray-300">
                               <tbody>
@@ -2017,7 +2070,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                       <td className="border p-3 w-16 text-center font-semibold bg-gray-50 text-black border-gray-300">
                                         {key}
                                       </td>
-                                      <td className="border p-3 border-gray-300 text-black">{text}</td>
+                                      <td className="border p-3 border-gray-300 text-black">
+                                        <span dangerouslySetInnerHTML={{ __html: text as string }} />
+                                      </td>
                                     </tr>
                                   ))}
                               </tbody>
@@ -2087,7 +2142,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                                             e.target.value,
                                                           )
                                                         }
-                                                        className="w-32 text-sm bg-white border-gray-300 focus:border-gray-500 inline-block"
+                                                        className="inline-block w-32 text-sm bg-white border-gray-300 focus:border-gray-500"
                                                         placeholder={inputQuestionNumber.toString()}
                                                       />
                                                     )
@@ -2162,7 +2217,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 return Object.entries(rowsData).map(([position, coords]: [string, any], index) => {
                                   const dropZoneQuestionId = `${question.id}_map_${position}`
                                   const currentAnswer = answers[dropZoneQuestionId]
-                                  const questionNum = thisQuestionStartNum + index
+                                  const questionNum = questionStartNum + index
 
                                   let selectedOptionText = ""
                                   if (currentAnswer) {
@@ -2563,7 +2618,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
                             return parts.map((part, index) => {
                               if (part.match(/____+/)) {
-                                const questionNum = thisQuestionStartNum + currentInputIndex
+                                const questionNum = questionStartNum + currentInputIndex
                                 const inputId = `${question.id}_note_${currentInputIndex}`
                                 const currentAnswer = answers[inputId] || ""
                                 currentInputIndex++
