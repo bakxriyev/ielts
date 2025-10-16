@@ -271,12 +271,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
         if (data.exam_id) {
           setBackendExamId(data.exam_id)
-          console.log("[v0] Backend exam_id:", data.exam_id)
         }
 
         if (data?.questions && data?.passages) {
           const numbers: Record<string, number> = {}
-          let currentQNum = 1
 
           const sortedQuestions = [...data.questions].sort((a, b) => {
             const aOrder = a.order ?? a.id
@@ -284,7 +282,28 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             return Number(aOrder) - Number(bOrder)
           })
 
+          // Group questions by part
+          const questionsByPart: Record<number, typeof sortedQuestions> = {
+            1: [],
+            2: [],
+            3: [],
+          }
+
           sortedQuestions.forEach((questionGroup) => {
+            const partNum =
+              typeof questionGroup.part === "string"
+                ? Number.parseInt(questionGroup.part.replace("PART", ""))
+                : questionGroup.part
+            if (partNum >= 1 && partNum <= 3) {
+              questionsByPart[partNum].push(questionGroup)
+            }
+          })
+
+          // Simple sequential numbering - Part 1: 1-13, Part 2: 14-26, Part 3: 27-40
+          let currentQNum = 1
+
+          // Process Part 1
+          questionsByPart[1].forEach((questionGroup) => {
             const sortedRQuestions = questionGroup.r_questions
               ? [...questionGroup.r_questions].sort((a, b) => {
                   const aOrder = a.order ?? a.q_number ?? a.id
@@ -302,9 +321,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 if (matchingPassage) {
                   const underscorePattern = /_{2,}/g
                   const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
-                  currentQNum += matches.length
-                } else {
-                  currentQNum++
+                  for (let i = 0; i < matches.length; i++) {
+                    const gapQuestionId = `matching_${i}`
+                    numbers[gapQuestionId] = currentQNum
+                    currentQNum++
+                  }
                 }
               } else if (question.q_type === "MCQ_MULTI") {
                 const correctCount = question.correct_answers?.length || 1
@@ -335,10 +356,164 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 }
               } else if (question.q_type === "MATCHING_INFORMATION") {
                 const rowCount = (question as any).rows?.length || 1
-                currentQNum += rowCount
+                for (let i = 0; i < rowCount; i++) {
+                  const rowQuestionId = `${questionId}_row_${i}`
+                  numbers[rowQuestionId] = currentQNum
+                  currentQNum++
+                }
               } else if (question.q_type === "SENTENCE_COMPLETION") {
                 const blankCount = (question.q_text?.match(/_+/g) || []).length
-                currentQNum += blankCount
+                if (blankCount > 0) {
+                  currentQNum += blankCount
+                } else {
+                  currentQNum++
+                }
+              } else {
+                currentQNum++
+              }
+            })
+          })
+
+          // Process Part 2
+          currentQNum = 14 // Part 2 starts at 14
+          questionsByPart[2].forEach((questionGroup) => {
+            const sortedRQuestions = questionGroup.r_questions
+              ? [...questionGroup.r_questions].sort((a, b) => {
+                  const aOrder = a.order ?? a.q_number ?? a.id
+                  const bOrder = b.order ?? b.q_number ?? b.id
+                  return Number(aOrder) - Number(bOrder)
+                })
+              : []
+
+            sortedRQuestions.forEach((question) => {
+              const questionId = `${questionGroup.id}_${question.id}`
+              numbers[questionId] = currentQNum
+
+              if (question.q_type === "MATCHING_HEADINGS") {
+                const matchingPassage = data.passages.find((p) => p.type === "matching")
+                if (matchingPassage) {
+                  const underscorePattern = /_{2,}/g
+                  const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
+                  for (let i = 0; i < matches.length; i++) {
+                    const gapQuestionId = `matching_${i}`
+                    numbers[gapQuestionId] = currentQNum
+                    currentQNum++
+                  }
+                }
+              } else if (question.q_type === "MCQ_MULTI") {
+                const correctCount = question.correct_answers?.length || 1
+                currentQNum += correctCount
+              } else if (question.q_type === "TABLE_COMPLETION") {
+                if (question.rows && Array.isArray(question.rows)) {
+                  question.rows.forEach((row, rowIndex) => {
+                    if (row.cells && Array.isArray(row.cells)) {
+                      row.cells.forEach((cell, cellIndex) => {
+                        if (cell === "" || cell === "_") {
+                          const cellQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
+                          numbers[cellQuestionId] = currentQNum
+                          currentQNum++
+                        }
+                      })
+                    }
+                  })
+                } else if (question.table_structure?.rows) {
+                  question.table_structure.rows.forEach((row, rowIndex) => {
+                    Object.values(row).forEach((value, cellIndex) => {
+                      if (value === "" || value === "_") {
+                        const cellQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
+                        numbers[cellQuestionId] = currentQNum
+                        currentQNum++
+                      }
+                    })
+                  })
+                }
+              } else if (question.q_type === "MATCHING_INFORMATION") {
+                const rowCount = (question as any).rows?.length || 1
+                for (let i = 0; i < rowCount; i++) {
+                  const rowQuestionId = `${questionId}_row_${i}`
+                  numbers[rowQuestionId] = currentQNum
+                  currentQNum++
+                }
+              } else if (question.q_type === "SENTENCE_COMPLETION") {
+                const blankCount = (question.q_text?.match(/_+/g) || []).length
+                if (blankCount > 0) {
+                  currentQNum += blankCount
+                } else {
+                  currentQNum++
+                }
+              } else {
+                currentQNum++
+              }
+            })
+          })
+
+          // Process Part 3
+          currentQNum = 27 // Part 3 starts at 27
+          questionsByPart[3].forEach((questionGroup) => {
+            const sortedRQuestions = questionGroup.r_questions
+              ? [...questionGroup.r_questions].sort((a, b) => {
+                  const aOrder = a.order ?? a.q_number ?? a.id
+                  const bOrder = b.order ?? b.q_number ?? b.id
+                  return Number(aOrder) - Number(bOrder)
+                })
+              : []
+
+            sortedRQuestions.forEach((question) => {
+              const questionId = `${questionGroup.id}_${question.id}`
+              numbers[questionId] = currentQNum
+
+              if (question.q_type === "MATCHING_HEADINGS") {
+                const matchingPassage = data.passages.find((p) => p.type === "matching")
+                if (matchingPassage) {
+                  const underscorePattern = /_{2,}/g
+                  const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
+                  for (let i = 0; i < matches.length; i++) {
+                    const gapQuestionId = `matching_${i}`
+                    numbers[gapQuestionId] = currentQNum
+                    currentQNum++
+                  }
+                }
+              } else if (question.q_type === "MCQ_MULTI") {
+                const correctCount = question.correct_answers?.length || 1
+                currentQNum += correctCount
+              } else if (question.q_type === "TABLE_COMPLETION") {
+                if (question.rows && Array.isArray(question.rows)) {
+                  question.rows.forEach((row, rowIndex) => {
+                    if (row.cells && Array.isArray(row.cells)) {
+                      row.cells.forEach((cell, cellIndex) => {
+                        if (cell === "" || cell === "_") {
+                          const cellQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
+                          numbers[cellQuestionId] = currentQNum
+                          currentQNum++
+                        }
+                      })
+                    }
+                  })
+                } else if (question.table_structure?.rows) {
+                  question.table_structure.rows.forEach((row, rowIndex) => {
+                    Object.values(row).forEach((value, cellIndex) => {
+                      if (value === "" || value === "_") {
+                        const cellQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
+                        numbers[cellQuestionId] = currentQNum
+                        currentQNum++
+                      }
+                    })
+                  })
+                }
+              } else if (question.q_type === "MATCHING_INFORMATION") {
+                const rowCount = (question as any).rows?.length || 1
+                for (let i = 0; i < rowCount; i++) {
+                  const rowQuestionId = `${questionId}_row_${i}`
+                  numbers[rowQuestionId] = currentQNum
+                  currentQNum++
+                }
+              } else if (question.q_type === "SENTENCE_COMPLETION") {
+                const blankCount = (question.q_text?.match(/_+/g) || []).length
+                if (blankCount > 0) {
+                  currentQNum += blankCount
+                } else {
+                  currentQNum++
+                }
               } else {
                 currentQNum++
               }
@@ -346,7 +521,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           })
 
           setQuestionNumbers(numbers)
-          setTotalQuestions(currentQNum - 1)
+          setTotalQuestions(40)
         }
 
         const initialTime = 3600
@@ -374,7 +549,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 ) {
                   const positionIndex = Object.keys(item.answer)[0]
                   const value = item.answer[positionIndex]
-                  const questionId = `matching_${positionIndex}`
+                  const questionId = `matching_${positionIndex}` // Corrected to match the numbering logic
                   loadedAnswers[questionId] = value
 
                   setMatchingAnswers((prev) => ({
@@ -407,7 +582,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 }
               })
 
-              console.log("[v0] Loaded answers from localStorage:", loadedAnswers)
               setAnswers(loadedAnswers)
             }
           } catch (error) {
@@ -454,8 +628,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   }, [timeRemaining])
 
   const handleAnswerChange = (questionId: string, answer: string | string[] | Record<string, string>) => {
-    console.log("[v0] handleAnswerChange called:", { questionId, answer })
-
     const newAnswers = {
       ...answers,
       [questionId]: answer,
@@ -478,19 +650,22 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
     const parts = questionId.split("_")
     const questionGroupId = parts[0]
-    const rQuestionId = parts[1] || parts[0]
+    const rQuestionId =
+      parts.length > 1 &&
+      !questionId.includes("_table_") &&
+      !questionId.startsWith("matching_") &&
+      !questionId.includes("_row_") &&
+      !questionId.includes("_summary_")
+        ? parts[1]
+        : parts[parts.length - 2] // Handle cases like 'MATCHING_HEADINGS' and 'TABLE_COMPLETION'
 
     const questionGroup = testData?.questions.find((qg) => qg.id.toString() === questionGroupId)
     const question = questionGroup?.r_questions?.find((rq) => rq.id.toString() === rQuestionId)
     const questionType = question?.q_type || "UNKNOWN"
 
-    console.log("[v0] Question info:", { questionGroupId, rQuestionId, questionType, question })
-
     const examIdToUse = backendExamId || examId
 
     if (!answer || (Array.isArray(answer) && answer.length === 0) || answer.toString().trim() === "") {
-      console.log("[v0] Deleting answer for:", questionId)
-
       if (questionId.includes("_table_")) {
         const rowIndex = parts[parts.length - 2]
         const cellIndex = parts[parts.length - 1]
@@ -533,18 +708,19 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             ),
         )
       } else {
+        // For regular questions (MCQ_SINGLE, TFNG, etc.)
         answersArray = answersArray.filter(
           (item: any) =>
             !(
               item.questionId === Number.parseInt(questionGroupId) &&
               item.r_questionsID === Number.parseInt(rQuestionId) &&
-              !item.rowIndex
+              !item.rowIndex &&
+              !item.blankIndex
             ),
         )
       }
 
       localStorage.setItem(answersKey, JSON.stringify(answersArray))
-      console.log("[v0] Saved answers after deletion:", answersArray)
       return
     }
 
@@ -567,8 +743,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           [cellPosition]: answer,
         },
       })
-
-      console.log("[v0] Saved TABLE answer:", { cellPosition, answer })
     } else if (questionId.startsWith("matching_")) {
       const positionIndex = parts[1]
 
@@ -579,30 +753,22 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         return true
       })
 
-      const matchingQuestion = testData?.questions
-        .flatMap((qg) => qg.r_questions || [])
-        .find((q) => q.q_type === "MATCHING_HEADINGS")
+      // Find the correct question group and r_question id for MATCHING_HEADINGS
+      const matchingQuestionGroup = testData?.questions.find((qg) =>
+        qg.r_questions?.some((q) => q.q_type === "MATCHING_HEADINGS"),
+      )
+      const matchingQuestion = matchingQuestionGroup?.r_questions?.find((q) => q.q_type === "MATCHING_HEADINGS")
 
-      if (matchingQuestion) {
-        const matchingQuestionGroup = testData?.questions.find((qg) =>
-          qg.r_questions?.some((q) => q.id === matchingQuestion.id),
-        )
-
+      if (matchingQuestion && matchingQuestionGroup) {
         answersArray.push({
           userId: getUserId(),
-          questionId: matchingQuestionGroup?.id || Number.parseInt(questionGroupId),
+          questionId: matchingQuestionGroup.id,
           r_questionsID: matchingQuestion.id,
           examId: Number.parseInt(examIdToUse),
           question_type: "MATCHING_HEADINGS",
           answer: {
             [positionIndex]: answer,
           },
-        })
-
-        console.log("[v0] Saved MATCHING_HEADINGS answer separately:", {
-          positionIndex,
-          answer,
-          fullEntry: answersArray[answersArray.length - 1],
         })
       }
     } else if (questionId.includes("_row_")) {
@@ -625,12 +791,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           [rowIndex]: answer,
         },
       })
-
-      console.log("[v0] Saved MATCHING_INFORMATION answer separately:", {
-        rowIndex,
-        answer,
-        fullEntry: answersArray[answersArray.length - 1],
-      })
     } else if (questionType === "MCQ_MULTI" && Array.isArray(answer)) {
       answersArray = answersArray.filter(
         (item: any) =>
@@ -651,8 +811,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           answer: selectedOption,
         })
       })
-
-      console.log("[v0] Saved MCQ_MULTI answers:", answer)
     } else if (questionType === "SENTENCE_COMPLETION" || questionType === "SUMMARY_COMPLETION") {
       answersArray = answersArray.filter(
         (item: any) =>
@@ -670,8 +828,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         question_type: questionType,
         answer: answer,
       })
-      console.log(`[v0] Saved ${questionType} answer:`, answer)
     } else {
+      // For regular questions (MCQ_SINGLE, TFNG, etc.)
       answersArray = answersArray.filter(
         (item: any) =>
           !(
@@ -690,12 +848,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         question_type: questionType,
         answer: answer,
       })
-
-      console.log("[v0] Saved regular answer:", { questionType, answer })
     }
 
     localStorage.setItem(answersKey, JSON.stringify(answersArray))
-    console.log("[v0] Total answers in localStorage:", answersArray.length)
   }
 
   const handleMatchingInformationAnswer = (
@@ -703,26 +858,19 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     rQuestionId: string,
     rowIndex: number,
     selectedChoice: string,
-    questionType: string,
   ) => {
     const questionId = `${questionGroupId}_${rQuestionId}_row_${rowIndex}`
     handleAnswerChange(questionId, selectedChoice)
   }
 
   const handleSubmit = async () => {
-    console.log("[v0] Submit button clicked")
-    console.log("[v0] Current state:", { isSubmitted, isSubmitting, showSubmitLoading })
-
     const currentUserId = getUserId()
-    console.log("[v0] Current user ID:", currentUserId)
 
     if (isSubmitted || isSubmitting || showSubmitLoading) {
-      console.log("[v0] Submit blocked by state check")
       return
     }
 
     if (!currentUserId) {
-      console.log("[v0] No user ID found")
       setAlert({
         title: "Error",
         message: "User not found. Please log in again.",
@@ -731,12 +879,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       return
     }
 
-    console.log("[v0] Opening confirmation modal")
     setShowConfirmModal(true)
   }
 
   const submitAnswers = async () => {
-    console.log("[v0] Starting submission process")
     setIsSubmitting(true)
     setShowSubmitLoading(true)
 
@@ -744,12 +890,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       const currentUserId = getUserId()
       const answersKey = `answers_${examId}_reading_${currentUserId}`
 
-      console.log("[v0] Looking for answers with key:", answersKey)
-
       const answersData = localStorage.getItem(answersKey)
 
       if (!answersData) {
-        console.log("[v0] No answers found in localStorage")
         throw new Error("No answers found")
       }
 
@@ -765,19 +908,14 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       }
 
       if (allAnswers.length === 0) {
-        console.log("[v0] Answers array is empty")
         throw new Error("No answers found")
       }
-
-      console.log("[v0] Found", allAnswers.length, "answers to submit")
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL
       if (!apiUrl) {
         console.error("[v0] API URL not configured")
         throw new Error("API URL not configured")
       }
-
-      console.log("[v0] API URL:", apiUrl)
 
       let successCount = 0
       let failCount = 0
@@ -787,8 +925,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       for (const answer of allAnswers) {
         try {
-          console.log("[v0] Submitting answer:", answer)
-
           const response = await fetch(`${apiUrl}/reading-answers`, {
             method: "POST",
             headers: {
@@ -808,21 +944,16 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}))
-            console.error("[v0] Submit error for answer:", answer, errorData)
             failCount++
             errors.push(`Question ${answer.questionId}: ${errorData.message || "Failed"}`)
           } else {
             successCount++
-            console.log("[v0] Successfully submitted answer:", answer.questionId)
           }
         } catch (error) {
-          console.error("[v0] Network error submitting answer:", answer, error)
           failCount++
           errors.push(`Question ${answer.questionId}: Network error`)
         }
       }
-
-      console.log("[v0] Submission complete:", { successCount, failCount })
 
       if (failCount > 0) {
         setAlert({
@@ -834,23 +965,17 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       if (successCount > 0) {
         localStorage.removeItem(answersKey)
-        console.log("[v0] Cleared localStorage key:", answersKey)
 
         setIsSubmitted(true)
         setIsCompleted(true)
 
         const readingCompleted = await checkSectionCompletionAPI(currentUserId, examIdToUse, "reading")
-        console.log("[v0] Reading completion verified from API:", readingCompleted)
 
         if (readingCompleted) {
           markSectionCompleted(examIdToUse, "reading")
-          console.log("[v0] Marked reading section as completed")
-        } else {
-          console.log("[v0] Reading section not marked as completed - API verification failed")
         }
 
         if (areAllSectionsCompleted(examIdToUse)) {
-          console.log("[v0] All sections completed! Showing celebration modal")
           setShowCompletionModal(true)
         } else {
           setAlert({
@@ -861,7 +986,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
           const redirectExamId = backendExamId || examId
           setTimeout(() => {
-            console.log("[v0] Redirecting to mock exam page")
             router.push(`/mock/${redirectExamId}`)
           }, 1500)
         }
@@ -869,7 +993,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         throw new Error("All submissions failed")
       }
     } catch (error) {
-      console.error("[v0] Error submitting test:", error)
       setAlert({
         title: "Submission Failed",
         message: error instanceof Error ? error.message : "There was an error submitting your test. Please try again.",
@@ -1084,7 +1207,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         const questionId = `${questionGroup.id}_${question.id}`
 
         if (question.q_type === "TABLE_COMPLETION") {
-          const inputCount = 0
           if (question.rows && Array.isArray(question.rows)) {
             question.rows.forEach((row, rowIndex) => {
               if (row.cells && Array.isArray(row.cells)) {
@@ -1126,7 +1248,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             count++
           }
         } else if (question.q_type === "MATCHING_HEADINGS") {
-          const getCurrentPartPassages = testData?.passages?.filter((p) => p.part === `PART${partNumber}`) || []
           const matchingPassage = getCurrentPartPassages.find((p) => p.type === "matching")
           if (matchingPassage) {
             const underscorePattern = /_{2,}/g
@@ -1240,13 +1361,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     const lastQuestion = questionGroup.r_questions[questionGroup.r_questions.length - 1]
 
     const firstQuestionId = `${questionGroup.id}_${firstQuestion.id}`
-    const lastQuestionId = `${questionGroup.id}_${lastQuestion.id}`
-
     const startNum = getQuestionNumber(firstQuestionId)
 
-    // Calculate end number based on question types
     let endNum = startNum
-    questionGroup.r_questions.forEach((question) => {
+
+    questionGroup.r_questions.forEach((question, index) => {
       const questionId = `${questionGroup.id}_${question.id}`
       const currentStart = getQuestionNumber(questionId)
 
@@ -1321,12 +1440,15 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   e.preventDefault()
                   e.currentTarget.classList.remove("border-blue-500", "bg-blue-50")
                   if (draggedOption) {
-                    const matchingKey = `matching_${index + 1}`
+                    // Use the index from the split parts to determine the gap number
+                    const gapIndex = index // If split by _ _, the index corresponds to the gap number - 1
+                    const matchingKey = `matching_${gapIndex}` // Match the numbering scheme used in fetchTestData
+
                     setMatchingAnswers((prev) => ({
                       ...prev,
                       [questionId]: {
                         ...(prev[questionId] || {}),
-                        [index + 1]: draggedOption.key,
+                        [gapIndex + 1]: draggedOption.key, // Store with 1-based index for consistency if needed elsewhere
                       },
                     }))
 
@@ -1575,23 +1697,26 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     return partQuestions.map((questionGroup) => (
       <div
         key={questionGroup.id}
-        className={`space-y-6 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}
+        className={`space-y-6 p-6 rounded-lg border-b ${colorStyles.border} last:border-b-0`}
         style={{ fontSize: `${textSize}px` }}
       >
         {(questionGroup.title || questionGroup.instruction) && (
-          <div className={`p-4 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}>
+          <div className="mb-6">
             {questionGroup.title && (
               <h3 className={`text-xl font-bold mb-3 ${colorStyles.text}`}>{questionGroup.title}</h3>
             )}
             {questionGroup.instruction && (
               <div>
-                <div className={`text-sm font-semibold mb-2 text-gray-500`}>
+                <div className={`text-2xl font-bold mb-3 ${colorStyles.text}`}>
                   Questions {(() => {
                     const range = getQuestionGroupRange(questionGroup)
-                    return range.start === range.end ? range.start : `${range.start}-${range.end}`
+                    return range.start === range.end ? range.start : `${range.start}–${range.end}`
                   })()}
                 </div>
-                <div className={`text-base leading-relaxed ${colorStyles.text}`}>{questionGroup.instruction}</div>
+                <div
+                  className={`text-base leading-relaxed ${colorStyles.text}`}
+                  dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                />
               </div>
             )}
           </div>
@@ -1608,41 +1733,46 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           return (
             <div key={question.id} id={`question-${questionGroup.id}_${question.id}`} className="space-y-4">
               {question.q_type !== "MCQ_MULTI" && question.q_type !== "MATCHING_HEADINGS" && (
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-sm font-medium">
-                    {(() => {
-                      const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
+                      {(() => {
+                        const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
 
-                      if (question.q_type === "TABLE_COMPLETION") {
-                        let inputCount = 0
-                        if (question.rows && Array.isArray(question.rows)) {
-                          question.rows.forEach((row) => {
-                            if (row.cells && Array.isArray(row.cells)) {
-                              row.cells.forEach((cell) => {
-                                if (cell === "" || cell === "_") {
+                        if (question.q_type === "TABLE_COMPLETION") {
+                          let inputCount = 0
+                          if (question.rows && Array.isArray(question.rows)) {
+                            question.rows.forEach((row) => {
+                              if (row.cells && Array.isArray(row.cells)) {
+                                row.cells.forEach((cell) => {
+                                  if (cell === "" || cell === "_") {
+                                    inputCount++
+                                  }
+                                })
+                              }
+                            })
+                          } else if (question.table_structure?.rows) {
+                            question.table_structure.rows.forEach((row) => {
+                              Object.values(row).forEach((value) => {
+                                if (value === "" || value === "_") {
                                   inputCount++
                                 }
                               })
-                            }
-                          })
-                        } else if (question.table_structure?.rows) {
-                          question.table_structure.rows.forEach((row) => {
-                            Object.values(row).forEach((value) => {
-                              if (value === "" || value === "_") {
-                                inputCount++
-                              }
                             })
-                          })
+                          }
+                          const endNum = startNum + inputCount - 1
+                          return inputCount > 1 ? `${startNum}–${endNum}` : startNum
                         }
-                        const endNum = startNum + inputCount - 1
-                        return inputCount > 1 ? `${startNum}-${endNum}` : startNum
-                      }
 
-                      return startNum
-                    })()}
-                  </span>
+                        return startNum
+                      })()}
+                    </span>
+                  </div>
                   {question.q_type !== "SENTENCE_COMPLETION" && question.q_text && (
-                    <div className={`text-lg font-medium ${colorStyles.text}`}>{question.q_text}</div>
+                    <div
+                      className={`text-lg font-medium ${colorStyles.text}`}
+                      dangerouslySetInnerHTML={{ __html: question.q_text }}
+                    />
                   )}
                 </div>
               )}
@@ -1694,9 +1824,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                         <RadioGroupItem value={option.key} id={`q${question.id}-${option.key}`} />
                         <Label
                           htmlFor={`q${question.id}-${option.key}`}
-                          className={`cursor-pointer text-base ${colorStyles.text}`}
+                          className={`flex-1 cursor-pointer ${colorStyles.text}`}
                         >
-                          {option.text}
+                          <span dangerouslySetInnerHTML={{ __html: option.text }} />
                         </Label>
                       </div>
                     ))}
@@ -1706,15 +1836,23 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
               {question.q_type === "MCQ_MULTI" && question.options && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="bg-gray-500 text-white px-2 py-1 rounded text-sm font-medium">
-                      {(() => {
-                        const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-                        const correctCount = question.correct_answers?.length || 1
-                        const endNum = startNum + correctCount - 1
-                        return correctCount > 1 ? `${startNum}-${endNum}` : `${startNum}`
-                      })()}
-                    </span>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
+                        Questions {(() => {
+                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                          const correctCount = question.correct_answers?.length || 1
+                          const endNum = startNum + correctCount - 1
+                          return correctCount > 1 ? `${startNum}–${endNum}` : `${startNum}`
+                        })()}
+                      </span>
+                    </div>
+                    {question.q_text && (
+                      <div
+                        className={`text-lg font-medium ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
                   </div>
                   <div className="space-y-3">
                     {question.options.map((option, index) => (
@@ -1740,7 +1878,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           htmlFor={`q${question.id}-${option.key}`}
                           className={`flex-1 cursor-pointer ${colorStyles.text}`}
                         >
-                          {option.text}
+                          <span dangerouslySetInnerHTML={{ __html: option.text }} />
                         </label>
                       </div>
                     ))}
@@ -1762,7 +1900,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                             <span>
                               {parts.map((part, index) => (
                                 <React.Fragment key={index}>
-                                  {part}
+                                  <span dangerouslySetInnerHTML={{ __html: part }} />
                                   {index < parts.length - 1 && (
                                     <Input
                                       value={
@@ -1794,7 +1932,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                             </span>
                           )
                         }
-                        return text
+                        return <span dangerouslySetInnerHTML={{ __html: text }} />
                       })()}
                     </div>
                   </div>
@@ -1802,22 +1940,47 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               )}
 
               {question.q_type === "MATCHING_HEADINGS" && question.choices && (
-                <div className={`mt-4 p-4 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}>
-                  <h4 className={`font-semibold mb-3 ${colorStyles.text}`}></h4>
-                  <div className="grid grid-cols-1 gap-2">
-                    {Object.entries(question.choices).map(([key, text]) => (
+                <div className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
+                        Questions {(() => {
+                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                          const matchingPassage = getCurrentPartPassages.find((p) => p.type === "matching")
+                          if (matchingPassage) {
+                            const underscorePattern = /_{2,}/g
+                            const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
+                            const endNum = startNum + matches.length - 1
+                            return matches.length > 1 ? `${startNum}–${endNum}` : startNum
+                          }
+                          return startNum
+                        })()}
+                      </span>
+                    </div>
+                    {question.q_text && (
                       <div
-                        key={key}
-                        draggable
-                        onDragStart={() => setDraggedOption({ key, text: text as string })}
-                        onDragEnd={() => setDraggedOption(null)}
-                        onTouchStart={() => setDraggedOption({ key, text: text as string })}
-                        className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-move transition-colors touch-none ${colorStyles.cardBg} ${colorStyles.border} hover:border-blue-400`}
-                      >
-                        <span className="font-bold text-blue-600">{key}</span>
-                        <span className={colorStyles.text}>{text as string}</span>
-                      </div>
-                    ))}
+                        className={`text-lg font-medium ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="grid grid-cols-1 gap-2">
+                      {Object.entries(question.choices).map(([key, text]) => (
+                        <div
+                          key={key}
+                          draggable
+                          onDragStart={() => setDraggedOption({ key, text: text as string })}
+                          onDragEnd={() => setDraggedOption(null)}
+                          onTouchStart={() => setDraggedOption({ key, text: text as string })}
+                          className={`flex items-center gap-2 p-3 border-2 rounded-lg cursor-move transition-colors touch-none ${colorStyles.cardBg} ${colorStyles.border} hover:border-blue-400`}
+                        >
+                          <span className="font-bold text-blue-600">{key}</span>
+                          <span className={colorStyles.text} dangerouslySetInnerHTML={{ __html: text as string }} />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1921,7 +2084,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
               {question.q_type === "MATCHING_INFORMATION" && (question as any).rows && (question as any).choices && (
                 <div className="space-y-4">
-                  {/* Main table with rows and choice columns */}
                   <div className="overflow-x-auto">
                     <table className={`w-full border ${colorStyles.border}`}>
                       <thead>
@@ -1948,7 +2110,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                         {((question as any).rows as string[]).map((rowText: string, rowIndex: number) => {
                           const rowQuestionId = `${questionId}_row_${rowIndex}`
                           const selectedAnswer = answers[rowQuestionId] as string | undefined
-                          const questionNum = getQuestionNumber(questionId) + rowIndex
+                          const questionNum = getQuestionNumber(rowQuestionId)
 
                           return (
                             <tr key={rowIndex}>
@@ -1961,7 +2123,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                 className={`border p-3 ${colorStyles.text} ${colorStyles.border}`}
                                 style={{ fontSize: `${textSize}px` }}
                               >
-                                {rowText}
+                                <span dangerouslySetInnerHTML={{ __html: rowText }} />
                               </td>
                               {Object.keys((question as any).choices).map((choiceKey) => (
                                 <td key={choiceKey} className={`border p-3 text-center ${colorStyles.border}`}>
@@ -1976,10 +2138,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                         String(question.id),
                                         rowIndex,
                                         choiceKey,
-                                        question.q_type,
                                       )
                                     }}
-                                    className="w-4 h-4 cursor-pointer"
+                                    className="w-5 h-5"
                                   />
                                 </td>
                               ))}
@@ -1990,10 +2151,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     </table>
                   </div>
 
-                  {/* Legend table showing what each choice represents */}
                   <div className={`mt-4 p-4 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}>
                     <h4 className={`font-semibold mb-3 ${colorStyles.text}`} style={{ fontSize: `${textSize + 2}px` }}>
-                      {question.q_text || "Legend"}
+                      {question.q_text ? <span dangerouslySetInnerHTML={{ __html: question.q_text }} /> : "Legend"}
                     </h4>
                     <table className={`w-full border ${colorStyles.border}`}>
                       <tbody>
@@ -2008,7 +2168,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               className={`border p-3 ${colorStyles.text} ${colorStyles.border}`}
                               style={{ fontSize: `${textSize}px` }}
                             >
-                              {value as string}
+                              <span dangerouslySetInnerHTML={{ __html: value as string }} />
                             </td>
                           </tr>
                         ))}
@@ -2061,7 +2221,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               : `${colorStyles.inputBg} ${colorStyles.border} ${colorStyles.text} hover:bg-gray-50`
                           }`}
                         >
-                          <span className="font-medium">{option.key}</span> {option.text}
+                          <span className="font-medium">{option.key}</span>{" "}
+                          <span dangerouslySetInnerHTML={{ __html: option.text }} />
                         </Button>
                       ))}
                     </div>
@@ -2218,24 +2379,26 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       </Dialog>
 
       <div className="flex-1 flex overflow-hidden" ref={mainContentContainerRef}>
+        <div className="absolute top-[60px] left-0 right-0 z-10">
+          <div className={`${colorStyles.cardBg} border-b-2 ${colorStyles.border} px-6 py-4`}>
+            <h2 className={`text-xl font-bold ${colorStyles.text} mb-1`}>Part {currentPart}</h2>
+            <p className={`text-base ${colorStyles.text}`}>
+              Read the text and answer questions {(() => {
+                const range = getPartQuestionRange(currentPart)
+                return range.start === range.end ? range.start : `${range.start}–${range.end}`
+              })()}.
+            </p>
+          </div>
+        </div>
+
         {/* Passage Panel - Independent Scroll */}
         <div
           className={`${colorStyles.bg} border-r ${colorStyles.border} flex flex-col overflow-hidden`}
           style={{ width: `${passageWidth * 100}%` }}
         >
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto" style={{ paddingTop: "100px" }}>
             <div className="p-6">
               <div className={`${colorStyles.cardBg} rounded-lg p-6 shadow-sm`} style={{ fontSize: `${textSize}px` }}>
-                <div className="mb-4">
-                  <h2 className={`text-xl font-bold ${colorStyles.text} mb-2`}>Part {currentPart}</h2>
-                  <p className={colorStyles.text}>
-                    {(() => {
-                      const range = getPartQuestionRange(currentPart)
-                      return `${range.start}–${range.end}`
-                    })()}.
-                  </p>
-                </div>
-
                 <div className="prose max-w-none" ref={passageRef}>
                   {getCurrentPartPassages && getCurrentPartPassages.length > 0 ? (
                     getCurrentPartPassages.map((passage) => (
@@ -2280,17 +2443,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
         {/* Questions Panel - Independent Scroll */}
         <div className={`flex-1 flex flex-col overflow-hidden ${colorStyles.bg}`}>
-          <div className="flex-1 overflow-y-auto pb-20" style={{ fontSize: `${textSize}px` }}>
+          <div className="flex-1 overflow-y-auto pb-20" style={{ fontSize: `${textSize}px`, paddingTop: "100px" }}>
             <div className="p-6">
-              <div className="mb-6">
-                <h3 className={`text-xl font-bold ${colorStyles.text} mb-2`}>
-                  Questions {(() => {
-                    const range = getPartQuestionRange(currentPart)
-                    return `${range.start}–${range.end}`
-                  })()}
-                </h3>
-              </div>
-
               {(() => {
                 const matchingDetails = getMatchingQuestionDetails()
                 if (!matchingDetails) return null

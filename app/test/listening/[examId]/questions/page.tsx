@@ -91,7 +91,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
       const userData = localStorage.getItem("user")
       if (userData) {
         const user = JSON.parse(userData)
-        return user.id ? String(user.id) : "null"
+        return user.user.id ? String(user.user.id) : "null"
       }
     } catch (error) {
       console.error("[v0] Error parsing user data from localStorage:", error)
@@ -340,6 +340,22 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         return underscoreMatches ? underscoreMatches.length : 1
       }
       return 1
+    } else if (question.q_type === "TFNG") {
+      if (question.choices) {
+        try {
+          let choicesData: any
+          if (typeof question.choices === "object") {
+            choicesData = question.choices
+          } else if (typeof question.choices === "string") {
+            choicesData = JSON.parse(question.choices)
+          }
+          return Object.keys(choicesData).length
+        } catch (error) {
+          console.error("[v0] Failed to parse TFNG choices:", error)
+          return 1
+        }
+      }
+      return 1
     } else {
       return 1
     }
@@ -453,7 +469,58 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     if (!isEmptyAnswer) {
       const formattedAnswer = answer
 
-      if (questionIdentifier && questionIdentifier.includes("_map_")) {
+      if (actualQuestionType === "TFNG" && questionIdentifier && questionIdentifier.includes("_map_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const choiceNum = parts[2]
+        const selectedOption = answer
+
+        console.log("[v0] TFNG answer change:", { baseQuestionId, choiceNum, selectedOption })
+
+        const tfngQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+        if (!tfngQuestion) {
+          console.error("[v0] Could not find TFNG question for baseQuestionId:", baseQuestionId)
+          return
+        }
+
+        const l_questionsID = tfngQuestion.id
+
+        // Find existing TFNG answer for this question
+        const existingAnswerIndex = answersArray.findIndex(
+          (item: any) => item.l_questionsID === l_questionsID && item.question_type === "TFNG",
+        )
+
+        let tfngAnswers: Record<string, string> = {}
+
+        if (existingAnswerIndex !== -1) {
+          // Get existing answers object
+          const existingAnswer = answersArray[existingAnswerIndex].answer
+          tfngAnswers = typeof existingAnswer === "object" ? { ...existingAnswer } : {}
+          console.log("[v0] Existing TFNG answers:", tfngAnswers)
+          // Remove the old entry
+          answersArray.splice(existingAnswerIndex, 1)
+        }
+
+        // Update the specific choice
+        tfngAnswers[choiceNum] = selectedOption
+        console.log("[v0] Updated TFNG answers:", tfngAnswers)
+
+        // Add updated entry
+        answersArray.push({
+          userId: String(userId),
+          questionId: tfngQuestion.listening_questions_id,
+          examId: Number.parseInt(examId),
+          question_type: actualQuestionType,
+          answer: tfngAnswers,
+          l_questionsID: l_questionsID,
+        })
+
+        console.log("[v0] Saved TFNG to localStorage:", {
+          l_questionsID,
+          answer: tfngAnswers,
+        })
+      } else if (questionIdentifier && questionIdentifier.includes("_map_")) {
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
         const position = parts[2]
@@ -665,7 +732,51 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         })
       }
     } else {
-      if (questionIdentifier && questionIdentifier.includes("_map_")) {
+      if (actualQuestionType === "TFNG" && questionIdentifier && questionIdentifier.includes("_map_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const choiceNum = parts[2]
+
+        console.log("[v0] TFNG answer removal:", { baseQuestionId, choiceNum })
+
+        const tfngQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+        if (tfngQuestion) {
+          const l_questionsID = tfngQuestion.id
+
+          // Find existing TFNG answer
+          const existingAnswerIndex = answersArray.findIndex(
+            (item: any) => item.l_questionsID === l_questionsID && item.question_type === "TFNG",
+          )
+
+          if (existingAnswerIndex !== -1) {
+            const existingAnswer = answersArray[existingAnswerIndex].answer
+            const tfngAnswers = typeof existingAnswer === "object" ? { ...existingAnswer } : {}
+
+            console.log("[v0] Before removal:", tfngAnswers)
+
+            // Remove the specific choice
+            delete tfngAnswers[choiceNum]
+
+            console.log("[v0] After removal:", tfngAnswers)
+
+            // Remove the old entry
+            answersArray.splice(existingAnswerIndex, 1)
+
+            // If there are still answers left, add updated entry
+            if (Object.keys(tfngAnswers).length > 0) {
+              answersArray.push({
+                userId: String(userId),
+                questionId: tfngQuestion.listening_questions_id,
+                examId: Number.parseInt(examId),
+                question_type: actualQuestionType,
+                answer: tfngAnswers,
+                l_questionsID: l_questionsID,
+              })
+            }
+          }
+        }
+      } else if (questionIdentifier && questionIdentifier.includes("_map_")) {
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
         const position = parts[2]
@@ -679,7 +790,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           )
         }
       } else if (questionIdStr.includes("_table_")) {
-        const parts = questionId.split("_table_")
+        const parts = question.split("_table_")
         const baseQuestionId = parts[0]
         const [rowIndex, cellIndex] = parts[1].split("_").map(Number)
 
@@ -994,7 +1105,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         for (const [step, text] of sortedSteps) {
           if (typeof text === "string" && text.includes("__")) {
             if (blankCounter === subIndex) {
-              const allAnswers = answers[questionIdStr]
+              const allAnswers = answers[question.id.toString()]
               if (allAnswers && typeof allAnswers === "object" && allAnswers[step]) {
                 return true
               }
@@ -1008,6 +1119,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     } else if (question.q_type === "MCQ_MULTI") {
       const answer = answers[questionIdStr]
       if (Array.isArray(answer)) {
+        // Check if the specific subIndex is answered (for questions with multiple correct answers)
+        // This logic needs refinement if the intention is to check if ANY sub-question is answered.
+        // For now, it checks if the count of answered options is greater than the subIndex.
         return answer.length > subIndex
       }
       return false
@@ -1028,6 +1142,42 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         (item: any) => item.l_questionsID === actualQuestionNumber && item.question_type === "NOTE_COMPLETION",
       )
       return answerEntry !== undefined && answerEntry.answer !== undefined && answerEntry.answer !== ""
+    } else if (question.q_type === "TFNG") {
+      // Check each TFNG choice individually
+      const questionIdNum = Number.parseInt(questionIdStr)
+      const answersKey = `listening_answers_${examId}_${userId}`
+      const savedAnswers = localStorage.getItem(answersKey)
+      const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
+
+      const answerEntry = answersArray.find(
+        (item: any) => item.l_questionsID === questionIdNum && item.question_type === "TFNG",
+      )
+      if (!answerEntry || typeof answerEntry.answer !== "object") {
+        return false
+      }
+
+      // Get the specific choice number for this subIndex
+      let choicesData: Record<string, string> = {}
+      if (question.choices) {
+        if (typeof question.choices === "object") {
+          choicesData = question.choices
+        } else if (typeof question.choices === "string") {
+          try {
+            choicesData = JSON.parse(question.choices)
+          } catch (e) {
+            return false
+          }
+        }
+      }
+
+      const choiceKeys = Object.keys(choicesData)
+      if (subIndex < choiceKeys.length) {
+        const choiceNum = choiceKeys[subIndex]
+        const answer = answerEntry.answer[choiceNum]
+        return answer !== undefined && answer !== "" && answer !== null
+      }
+
+      return false
     } else {
       const answer = answers[questionIdStr]
       return answer !== undefined && answer !== "" && answer !== null
@@ -1430,19 +1580,26 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
   }
 
   return (
-    <div className={`flex flex-col h-screen ${getColorModeClasses()}`} style={{ fontSize: `${textSize}px ` }}>
-      <div className={`sticky top-0 z-50 ${getHeaderColorClasses()} border-b px-4 sm:px-6 py-4  `}>
-        <div className={`flex items-center justify-between `}>
-          <div className={`flex items-center space-x-4 sm:space-x-6  `}>
-            <div className={`font-bold text-xl sm:text-2xl ${isWarningMode ? "text-red-600" : "text-red-600"}`}>
+    <div className={`flex flex-col h-screen ${getColorModeClasses()}`}>
+      <div className={`sticky top-0 z-50 ${getHeaderColorClasses()} border-b px-4 sm:px-6 py-4`}>
+        <div className={`flex items-center justify-between`}>
+          <div className={`flex items-center space-x-4 sm:space-x-6`}>
+            <div
+              className={`font-bold text-xl sm:text-2xl ${isWarningMode ? "text-red-600" : "text-red-600"}`}
+              style={{ fontSize: `${textSize * 1.5}px` }}
+            >
               IELTS
             </div>
-            <div className={`text-base sm:text-lg font-medium ${isWarningMode ? "text-gray-800" : "text-gray-800"}`}>
+            <div
+              className={`text-base sm:text-lg font-medium ${isWarningMode ? "text-gray-800" : "text-gray-800"}`}
+              style={{ fontSize: `${textSize}px` }}
+            >
               Test taker ID: {userId}
             </div>
             {audioPlaying && (
               <div
                 className={`text-sm sm:text-base flex items-center gap-2 px-3 py-2 rounded-lg ${isWarningMode ? "bg-red-700 text-white" : "text-gray-900 bg-gray-100"}`}
+                style={{ fontSize: `${textSize * 0.875}px` }}
               >
                 <Volume2
                   className={`h-4 w-4 sm:h-5 sm:w-5 animate-pulse ${isWarningMode ? "text-white" : "text-gray-600"}`}
@@ -1475,7 +1632,12 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
               <VolumeX className={`h-4 w-4 sm:h-5 sm:w-5 ${isWarningMode ? "text-white" : "text-gray-600"}`} />
               <Slider value={volume} onValueChange={handleVolumeChange} max={100} step={1} className="w-16 sm:w-24" />
               <Volume2 className={`h-4 w-4 sm:h-5 sm:w-5 ${isWarningMode ? "text-white" : "text-gray-600"}`} />
-              <span className={`text-xs ml-1 ${isWarningMode ? "text-white" : "text-gray-500"}`}>{volume[0]}%</span>
+              <span
+                className={`text-xs ml-1 ${isWarningMode ? "text-white" : "text-gray-500"}`}
+                style={{ fontSize: `${textSize * 0.75}px` }}
+              >
+                {volume[0]}%
+              </span>
             </div>
 
             <button
@@ -1507,7 +1669,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         <div className="fixed inset-0 bg-transparent flex items-center justify-center z-[100]">
           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-xl w-full mx-4">
             <div className="flex items-center justify-between mb-8">
-              <h2 className="text-3xl font-bold text-gray-900">Settings</h2>
+              <h2 className="text-3xl font-bold text-gray-900" style={{ fontSize: `${textSize * 1.875}px` }}>
+                Settings
+              </h2>
               <button
                 onClick={() => setShowSettings(false)}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -1519,20 +1683,29 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
             <div className="space-y-10">
               <div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-6">Text Size</h3>
+                <h3 className="text-xl font-semibold text-gray-900 mb-6" style={{ fontSize: `${textSize * 1.25}px` }}>
+                  Text Size
+                </h3>
                 <div className="flex items-center justify-center gap-8">
                   <button
                     onClick={decreaseTextSize}
                     className="w-14 h-14 bg-gray-300 hover:bg-gray-400 rounded-xl text-3xl font-bold transition-colors flex items-center justify-center"
                     aria-label="Decrease text size"
+                    style={{ fontSize: `${textSize * 1.875}px` }}
                   >
                     -
                   </button>
-                  <span className="text-3xl font-semibold text-gray-900 min-w-[100px] text-center">{textSize}px</span>
+                  <span
+                    className="text-3xl font-semibold text-gray-900 min-w-[100px] text-center"
+                    style={{ fontSize: `${textSize * 1.875}px` }}
+                  >
+                    {textSize}px
+                  </span>
                   <button
                     onClick={increaseTextSize}
                     className="w-14 h-14 bg-gray-300 hover:bg-gray-400 rounded-xl text-3xl font-bold transition-colors flex items-center justify-center"
                     aria-label="Increase text size"
+                    style={{ fontSize: `${textSize * 1.875}px` }}
                   >
                     +
                   </button>
@@ -1540,7 +1713,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
               </div>
 
               <div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-6">Color Mode</h3>
+                <h3 className="text-xl font-semibold text-gray-900 mb-6" style={{ fontSize: `${textSize * 1.25}px` }}>
+                  Color Mode
+                </h3>
                 <div className="space-y-4">
                   <button
                     onClick={() => setColorMode("default")}
@@ -1549,6 +1724,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         ? "bg-blue-600 text-white shadow-lg"
                         : "bg-gray-200 text-gray-900 hover:bg-gray-300"
                     }`}
+                    style={{ fontSize: `${textSize * 1.125}px` }}
                   >
                     Default (Day)
                   </button>
@@ -1559,6 +1735,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         ? "bg-blue-600 text-white shadow-lg"
                         : "bg-gray-200 text-gray-900 hover:bg-gray-300"
                     }`}
+                    style={{ fontSize: `${textSize * 1.125}px` }}
                   >
                     Night Mode
                   </button>
@@ -1569,6 +1746,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         ? "bg-blue-600 text-white shadow-lg"
                         : "bg-gray-200 text-gray-900 hover:bg-gray-300"
                     }`}
+                    style={{ fontSize: `${textSize * 1.125}px` }}
                   >
                     Yellow Mode
                   </button>
@@ -1609,38 +1787,22 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         />
       )}
 
-      <div className="flex-1 overflow-auto pb-32">
-        <div className="max-w-4xl lg:max-w-6xl mx-auto p-4 sm:p-6">
-          <div className="mb-6">
-            <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-200">
-              <div className="mb-4">
-                <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Part {currentPart}</h2>
-                <p className="text-sm sm:text-base text-gray-600">
-                  Listen and answer questions {(() => {
-                    const range = getPartQuestionRange(currentPart)
-                    return `${range.start}–${range.end}`
-                  })()}.
-                </p>
-              </div>
-
-              {(() => {
-                const currentPartData = testData?.questions.find((q) => q.part === `PART${currentPart}`)
-                return currentPartData ? (
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                    <h4 className="font-semibold text-gray-900 mb-2">{currentPartData.title}</h4>
-                  </div>
-                ) : null
-              })()}
-            </div>
-          </div>
-
-          <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 mt-6">
-            Questions {(() => {
+      <div className="bg-gray-100  border-b border-gray-300 px-2 sm:px-6 py-2">
+        <div className="max-w-4xl lg:max-w-6xl mx-auto">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize * 1.25}px` }}>
+            Part {currentPart}
+          </h2>
+          <p className="text-sm sm:text-base text-gray-700" style={{ fontSize: `${textSize}px` }}>
+            Read the text and answer questions {(() => {
               const range = getPartQuestionRange(currentPart)
               return `${range.start}–${range.end}`
-            })()}
-          </h3>
+            })()}.
+          </p>
+        </div>
+      </div>
 
+      <div className="flex-1 overflow-auto pb-32">
+        <div className="max-w-4xl lg:max-w-6xl p-4 sm:p-6">
           <div className="space-y-6">
             {(() => {
               const partRange = getPartQuestionRange(currentPart)
@@ -1663,6 +1825,15 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                 if (questionType === "TABLE_COMPLETION") {
                   const tableAnswersKey = `${questionId}_answer`
                   currentAnswer = answers[tableAnswersKey] || {}
+                } else if (questionType === "TFNG") {
+                  // Handle TFNG answers for state display
+                  const answersKey = `listening_answers_${examId}_${userId}`
+                  const savedAnswers = localStorage.getItem(answersKey)
+                  const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
+                  const answerEntry = answersArray.find(
+                    (item: any) => item.l_questionsID === question.id && item.question_type === "TFNG",
+                  )
+                  currentAnswer = answerEntry ? answerEntry.answer : {}
                 } else {
                   currentAnswer = answers[questionId] || ""
                 }
@@ -1702,23 +1873,43 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                   <div
                     key={questionId}
                     ref={(el) => (questionRefs.current[question.id] = el)}
-                    className="space-y-4 p-4 sm:p-6 border rounded-lg bg-white border-gray-200"
+                    className="space-y-4 p-4 sm:p-6 bg-white"
+                    style={{ fontSize: `${textSize}px` }}
                   >
                     {/* Questions Header - Show for specific question types */}
-                    {(["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING"].includes(question.q_type || "") ||
-                      (question.q_type === "NOTE_COMPLETION" && questionCount !== 10)) && (
+                    {(question.q_type === "MCQ_SINGLE" && isFirstInGroup) ||
+                    ["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING", "SENTENCE_COMPLETION"].includes(
+                      question.q_type || "",
+                    ) ||
+                    (question.q_type === "NOTE_COMPLETION" && questionCount !== 10) ||
+                    question.q_type === "TFNG" ||
+                    question.q_type === "FLOW_CHART" ? (
                       <div className="mb-4">
-                        <h4 className="text-base sm:text-lg font-bold text-gray-900 mb-2">
-                          Questions {questionCount > 1 ? `${questionStartNum}–${questionEndNum}` : questionStartNum}
+                        <h4
+                          className="text-base sm:text-lg font-bold text-gray-900 mb-2"
+                          style={{ fontSize: `${textSize * 1.125}px` }}
+                        >
+                          {question.q_type === "MCQ_SINGLE" && isFirstInGroup
+                            ? (() => {
+                                // Calculate the total range for all MCQ_SINGLE questions in this group
+                                const groupQuestions = currentPartQuestions.filter(
+                                  (q) => q.groupId === question.groupId && q.q_type === "MCQ_SINGLE",
+                                )
+                                const totalQuestionsInGroup = groupQuestions.length
+                                const groupEndNum = questionStartNum + totalQuestionsInGroup - 1
+                                return `Questions ${totalQuestionsInGroup > 1 ? `${questionStartNum}–${groupEndNum}` : questionStartNum}`
+                              })()
+                            : `Questions ${questionCount > 1 ? `${questionStartNum}–${questionEndNum}` : questionStartNum}`}
                         </h4>
                       </div>
-                    )}
+                    ) : null}
 
                     {/* Instruction - Show if it's first in group and instruction exists */}
-                    {isFirstInGroup && questionGroup?.instruction && (
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                    {isFirstInGroup && questionGroup?.instruction && question.q_type !== "MATCHING_INFORMATION" && (
+                      <div className="mb-4">
                         <div
-                          className="text-gray-800"
+                          className="text-gray-700"
+                          style={{ fontSize: `${textSize}px` }}
                           dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
                         />
                       </div>
@@ -1726,26 +1917,47 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
                     {/* q_text - Show if exists for specific question types */}
                     {(["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING"].includes(question.q_type || "") ||
-                      (question.q_type === "NOTE_COMPLETION" && questionCount !== 10)) &&
+                      (question.q_type === "NOTE_COMPLETION" && questionCount !== 10) ||
+                      question.q_type === "TFNG" ||
+                      question.q_type === "FLOW_CHART") &&
                       question.q_text && (
-                        <div className="text-gray-700 mb-4" dangerouslySetInnerHTML={{ __html: question.q_text }} />
+                        <div
+                          className="text-gray-700 mb-4"
+                          style={{ fontSize: `${textSize}px` }}
+                          dangerouslySetInnerHTML={{ __html: question.q_text }}
+                        />
                       )}
 
                     {/* Question number and q_text for other question types */}
-                    {!["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING", "NOTE_COMPLETION", "FLOW_CHART"].includes(
-                      question.q_type || "",
-                    ) && (
+                    {![
+                      "MCQ_SINGLE",
+                      "MCQ_MULTI",
+                      "TABLE_COMPLETION",
+                      "MAP_LABELING",
+                      "NOTE_COMPLETION",
+                      "FLOW_CHART",
+                      "TFNG",
+                      "MATCHING_INFORMATION",
+                      "SENTENCE_COMPLETION",
+                    ].includes(question.q_type || "") && (
                       <div className="flex flex-row items-start gap-3 mb-4">
-                        <div className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0">
+                        <div
+                          className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0"
+                          style={{ fontSize: `${textSize * 1.125}px` }}
+                        >
                           {questionCount > 1 ? `${questionStartNum} - ${questionEndNum}` : questionStartNum}
                         </div>
                         {question.q_text && (
-                          <div className="text-gray-700 flex-1" dangerouslySetInnerHTML={{ __html: question.q_text }} />
+                          <div
+                            className="text-gray-700 flex-1"
+                            style={{ fontSize: `${textSize}px` }}
+                            dangerouslySetInnerHTML={{ __html: question.q_text }}
+                          />
                         )}
                       </div>
                     )}
 
-                {question.q_type === "TFNG" && question.photo && question.choices && question.options && (
+                    {question.q_type === "TFNG" && question.photo && question.choices && question.options && (
                       <div className="space-y-4">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           {/* Map Image - Left Side */}
@@ -1796,11 +2008,15 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                   <table className="w-full">
                                     <thead>
                                       <tr className="border-b-2 border-gray-300">
-                                        <th className="p-3 text-left bg-gray-50 font-semibold text-gray-900"></th>
+                                        <th
+                                          className="p-3 text-left bg-gray-50 font-semibold text-gray-900"
+                                          style={{ fontSize: `${textSize}px` }}
+                                        ></th>
                                         {optionsArray.map((option) => (
                                           <th
                                             key={option}
                                             className="p-3 text-center bg-gray-50 font-semibold text-gray-900 border-l border-gray-300"
+                                            style={{ fontSize: `${textSize}px` }}
                                           >
                                             {option}
                                           </th>
@@ -1810,17 +2026,23 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                     <tbody>
                                       {Object.entries(choicesData).map(([choiceNum, choiceText], index) => {
                                         const questionId = `${question.id}_map_${choiceNum}`
-                                        const currentAnswer = answers[questionId]
+                                        const choiceAnswer =
+                                          typeof currentAnswer === "object" && currentAnswer !== null
+                                            ? currentAnswer[choiceNum]
+                                            : answers[questionId]
                                         const actualQuestionNum = questionStartNum + index
 
                                         return (
                                           <tr key={choiceNum} className="border-b border-gray-200 hover:bg-gray-50">
                                             <td className="p-3 font-medium text-gray-900">
                                               <div className="flex items-center gap-2">
-                                                <span className="bg-gray-700 text-white w-6 h-6 rounded flex items-center justify-center text-sm font-bold flex-shrink-0">
+                                                <span
+                                                  className="bg-gray-700 text-white w-6 h-6 rounded flex items-center justify-center text-sm font-bold flex-shrink-0"
+                                                  style={{ fontSize: `${textSize * 0.875}px` }}
+                                                >
                                                   {actualQuestionNum}
                                                 </span>
-                                                <span>{choiceText}</span>
+                                                <span style={{ fontSize: `${textSize}px` }}>{choiceText}</span>
                                               </div>
                                             </td>
                                             {optionsArray.map((option) => (
@@ -1829,7 +2051,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                                   type="radio"
                                                   name={questionId}
                                                   value={option}
-                                                  checked={currentAnswer === option}
+                                                  checked={choiceAnswer === option}
                                                   onChange={(e) => {
                                                     handleAnswerChange(questionId, e.target.value, questionId)
                                                   }}
@@ -1850,11 +2072,26 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
                     {question.q_type === "MCQ_SINGLE" && optionsArray.length > 0 && (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
+                        <div className="flex items-start gap-3">
+                          <div
+                            className="bg-gray-700 text-white w-10 h-10 rounded flex items-center justify-center font-bold flex-shrink-0"
+                            style={{ fontSize: `${textSize}px` }}
+                          >
+                            {questionStartNum}
+                          </div>
+                          {question.q_text && (
+                            <div
+                              className="text-gray-900 flex-1 font-medium pt-1"
+                              style={{ fontSize: `${textSize}px` }}
+                              dangerouslySetInnerHTML={{ __html: question.q_text }}
+                            />
+                          )}
+                        </div>
                         <RadioGroup
                           value={currentAnswer || ""}
                           onValueChange={(value) => handleAnswerChange(questionId, value)}
-                          className="space-y-3"
+                          className="space-y-3 ml-[52px]"
                         >
                           {optionsArray.map((option, index) => (
                             <div key={index} className="flex items-center space-x-3">
@@ -1862,6 +2099,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                               <Label
                                 htmlFor={`q${question.id}-${option.key}`}
                                 className="cursor-pointer text-sm sm:text-base text-gray-900"
+                                style={{ fontSize: `${textSize}px` }}
                               >
                                 {option.text}
                               </Label>
@@ -1912,6 +2150,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 <Label
                                   htmlFor={`q${question.id}-${option.key}`}
                                   className="cursor-pointer text-sm sm:text-base text-gray-900"
+                                  style={{ fontSize: `${textSize}px` }}
                                 >
                                   <span dangerouslySetInnerHTML={{ __html: option.text }} />
                                 </Label>
@@ -1924,45 +2163,41 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
                     {question.q_type === "SENTENCE_COMPLETION" && (
                       <div className="space-y-2">
-                        <div className="text-base leading-relaxed text-gray-900">
-                          {(() => {
-                            const text = question.q_text || ""
-                            const parts = text.split(/_+/)
+                        <div className="flex items-start gap-3">
+                          <div
+                            className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0"
+                            style={{ fontSize: `${textSize * 1.125}px` }}
+                          >
+                            {questionStartNum}
+                          </div>
+                          <div
+                            className="text-base leading-relaxed text-gray-900 flex-1"
+                            style={{ fontSize: `${textSize}px` }}
+                          >
+                            {(() => {
+                              const text = question.q_text || ""
+                              const parts = text.split(/_+/)
 
-                            if (parts.length === 1) {
-                              // No underscores, just show input below
+                              // Always show inline input
                               return (
-                                <>
-                                  <div className="mb-2" dangerouslySetInnerHTML={{ __html: text }} />
-                                  <Input
-                                    value={currentAnswer || ""}
-                                    onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                                    className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
-                                    placeholder="Your answer"
-                                  />
-                                </>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {parts.map((part, index) => (
+                                    <React.Fragment key={index}>
+                                      <span dangerouslySetInnerHTML={{ __html: part }} />
+                                      {index < parts.length - 1 && (
+                                        <Input
+                                          value={currentAnswer || ""}
+                                          onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                                          className="inline-block w-32 px-2 py-1 text-sm bg-gray-100 border-gray-300 focus:border-gray-500 rounded"
+                                          placeholder={questionStartNum.toString()}
+                                        />
+                                      )}
+                                    </React.Fragment>
+                                  ))}
+                                </div>
                               )
-                            }
-
-                            // Show inline input where underscore is
-                            return (
-                              <div className="flex flex-wrap items-center gap-2">
-                                {parts.map((part, index) => (
-                                  <React.Fragment key={index}>
-                                    <span dangerouslySetInnerHTML={{ __html: part }} />
-                                    {index < parts.length - 1 && (
-                                      <Input
-                                        value={currentAnswer || ""}
-                                        onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                                        className="inline-block w-32 px-2 py-1 text-sm bg-white border-gray-300 focus:border-gray-500"
-                                        placeholder={questionStartNum.toString()}
-                                      />
-                                    )}
-                                  </React.Fragment>
-                                ))}
-                              </div>
-                            )
-                          })()}
+                            })()}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -2003,11 +2238,25 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
                     {question.q_type === "MATCHING_INFORMATION" && (
                       <div className="space-y-6">
+                        {/* Show instruction for MATCHING_INFORMATION at the top */}
+                        {isFirstInGroup && questionGroup?.instruction && (
+                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                            <div
+                              className="text-gray-800"
+                              style={{ fontSize: `${textSize}px` }}
+                              dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                            />
+                          </div>
+                        )}
+
                         <div className="overflow-x-auto">
                           <table className="w-full border text-base border-gray-300">
                             <thead>
                               <tr className="bg-gray-50">
-                                <th className="border p-3 text-left font-semibold text-black border-gray-300">
+                                <th
+                                  className="border p-3 text-left font-semibold text-black border-gray-300"
+                                  style={{ fontSize: `${textSize}px` }}
+                                >
                                   Questions {questionStartNum}–{questionEndNum}
                                 </th>
                                 {question.choices &&
@@ -2015,6 +2264,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                     <th
                                       key={choiceKey}
                                       className="border p-3 text-center font-semibold w-16 text-black border-gray-300"
+                                      style={{ fontSize: `${textSize}px` }}
                                     >
                                       {choiceKey}
                                     </th>
@@ -2054,7 +2304,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         </div>
 
                         <div className="mt-6">
-                          <h5 className="font-semibold mb-3 text-black">
+                          <h5 className="font-semibold mb-3 text-black" style={{ fontSize: `${textSize}px` }}>
                             {question.q_text ? (
                               <span dangerouslySetInnerHTML={{ __html: question.q_text }} />
                             ) : (
@@ -2067,10 +2317,16 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 {question.choices &&
                                   Object.entries(question.choices).map(([key, text]) => (
                                     <tr key={key}>
-                                      <td className="border p-3 w-16 text-center font-semibold bg-gray-50 text-black border-gray-300">
+                                      <td
+                                        className="border p-3 w-16 text-center font-semibold bg-gray-50 text-black border-gray-300"
+                                        style={{ fontSize: `${textSize}px` }}
+                                      >
                                         {key}
                                       </td>
-                                      <td className="border p-3 border-gray-300 text-black">
+                                      <td
+                                        className="border p-3 border-gray-300 text-black"
+                                        style={{ fontSize: `${textSize}px` }}
+                                      >
                                         <span dangerouslySetInnerHTML={{ __html: text as string }} />
                                       </td>
                                     </tr>
@@ -2317,7 +2573,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 }
                               }}
                             >
-                              <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
+                              <h4 className="font-semibold text-gray-900 mb-4" style={{ fontSize: `${textSize}px` }}>
+                                Options
+                              </h4>
                               <div className="space-y-2">
                                 {optionsArray
                                   .filter((option) => {
@@ -2557,7 +2815,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 }
                               }}
                             >
-                              <h4 className="font-semibold text-gray-900 mb-4">Options</h4>
+                              <h4 className="font-semibold text-gray-900 mb-4" style={{ fontSize: `${textSize}px` }}>
+                                Options
+                              </h4>
                               <div className="space-y-2">
                                 {question.options &&
                                   Array.isArray(question.options) &&
@@ -2638,6 +2898,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                   <span
                                     key={index}
                                     className="text-gray-900"
+                                    style={{ fontSize: `${textSize}px` }}
                                     dangerouslySetInnerHTML={{ __html: part }}
                                   />
                                 )
