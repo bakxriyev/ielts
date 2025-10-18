@@ -6,14 +6,15 @@ import { useEffect, useState, useRef, type ReactElement } from "react" // Import
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { markSectionCompleted, areAllSectionsCompleted } from "../../../../../lib/test-strotage"
+import { markSectionCompleted, areAllSectionsCompleted } from "@/lib/test-strotage"
 import { Volume2, VolumeX, Wifi, Bell, Menu, X } from "lucide-react"
-import { useCustomAlert } from "../../../../../components/custom-allert"
+import { useCustomAlert } from "@/components/custom-allert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Slider } from "@/components/ui/slider"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { CompletionModal } from "../../../../../components/completion-modal"
+import { CompletionModal } from "@/components/completion-modal"
+// import { SummaryDragQuestion } from "@/components/summary-drag-question" // Removed import
 
 interface LQuestion {
   id: number
@@ -86,11 +87,15 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
   const [showCompletionModal, setShowCompletionModal] = useState(false)
 
+  // State for Summary Drag and Drop
+  const [draggedItem, setDraggedItem] = useState<string | null>(null)
+  const [dragSource, setDragSource] = useState<string | null>(null)
+
   const getUserId = () => {
     try {
       const userData = localStorage.getItem("user")
       if (userData) {
-        const user = JSON.parse(userData)
+        const user = JSON.Parse(userData)
         return user.user.id ? String(user.user.id) : "null"
       }
     } catch (error) {
@@ -354,6 +359,11 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           console.error("[v0] Failed to parse TFNG choices:", error)
           return 1
         }
+      }
+      return 1
+    } else if (question.q_type === "SUMMARY_DRAG") {
+      if (question.options && typeof question.options === "object") {
+        return Object.keys(question.options).length
       }
       return 1
     } else {
@@ -714,6 +724,43 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           answer: { [(inputIndex + 1).toString()]: answer },
           l_questionsID: actualQuestionNumber,
         })
+      } else if (actualQuestionType === "SUMMARY_DRAG") {
+        // Assuming answer is an object like { [word_id]: { text: string, position: number } }
+        const summaryAnswersKey = `${questionIdStr}_summary_answers`
+        const existingSummaryAnswers = answers[summaryAnswersKey] || {}
+
+        const newSummaryAnswers = {
+          ...existingSummaryAnswers,
+          ...answer, // Merge the incoming answer changes
+        }
+
+        // Update state for UI
+        setAnswers((prev) => ({
+          ...prev,
+          [summaryAnswersKey]: newSummaryAnswers,
+        }))
+
+        // Prepare for localStorage saving
+        const existingLocalStorageAnswers = JSON.parse(localStorage.getItem(answersKey) || "[]")
+        const currentQuestionInLocalStorage = existingLocalStorageAnswers.find(
+          (item: any) => item.l_questionsID === question?.id && item.question_type === "SUMMARY_DRAG",
+        )
+
+        if (currentQuestionInLocalStorage) {
+          // Update existing entry
+          currentQuestionInLocalStorage.answer = newSummaryAnswers
+        } else {
+          // Add new entry
+          existingLocalStorageAnswers.push({
+            userId: String(userId),
+            questionId: question?.listening_questions_id,
+            examId: Number.parseInt(examId),
+            question_type: actualQuestionType,
+            answer: newSummaryAnswers,
+            l_questionsID: question?.id,
+          })
+        }
+        answersArray = existingLocalStorageAnswers // Update the main array for final save
       } else {
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
         const l_questionsID = question?.listening_questions_id
@@ -895,6 +942,33 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
           const actualQuestionNumber = questionCounter + inputIndex
           answersArray = answersArray.filter((item: any) => item.l_questionsID !== actualQuestionNumber)
+        }
+      } else if (actualQuestionType === "SUMMARY_DRAG") {
+        // Remove specific word from localStorage and state
+        const summaryAnswersKey = `${questionIdStr}_summary_answers`
+        const existingSummaryAnswers = answers[summaryAnswersKey] || {}
+
+        if (answer && typeof answer === "object" && answer.hasOwnProperty("wordIdToRemove")) {
+          const { wordIdToRemove } = answer
+          const newSummaryAnswers = { ...existingSummaryAnswers }
+          delete newSummaryAnswers[wordIdToRemove]
+
+          // Update state for UI
+          setAnswers((prev) => ({
+            ...prev,
+            [summaryAnswersKey]: Object.keys(newSummaryAnswers).length > 0 ? newSummaryAnswers : null,
+          }))
+
+          // Update localStorage
+          const existingLocalStorageAnswers = JSON.parse(localStorage.getItem(answersKey) || "[]")
+          const currentQuestionInLocalStorage = existingLocalStorageAnswers.find(
+            (item: any) => item.l_questionsID === question?.id && item.question_type === "SUMMARY_DRAG",
+          )
+
+          if (currentQuestionInLocalStorage) {
+            currentQuestionInLocalStorage.answer = Object.keys(newSummaryAnswers).length > 0 ? newSummaryAnswers : null
+          }
+          answersArray = existingLocalStorageAnswers
         }
       } else if (actualQuestionType === "MCQ_MULTI") {
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
@@ -1177,6 +1251,15 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         return answer !== undefined && answer !== "" && answer !== null
       }
 
+      return false
+    } else if (question.q_type === "SUMMARY_DRAG") {
+      const summaryAnswersKey = `${questionIdStr}_summary_answers`
+      const summaryAnswers = answers[summaryAnswersKey]
+      if (summaryAnswers && typeof summaryAnswers === "object") {
+        // Check if the specific input for this subIndex is filled
+        const answerValue = summaryAnswers[Object.keys(summaryAnswers)[subIndex]] // Assuming subIndex maps to a word index
+        return answerValue !== undefined && answerValue.text !== "" && answerValue.text !== null
+      }
       return false
     } else {
       const answer = answers[questionIdStr]
@@ -1826,24 +1909,23 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                   const tableAnswersKey = `${questionId}_answer`
                   currentAnswer = answers[tableAnswersKey] || {}
                 } else if (questionType === "TFNG") {
-                  // Handle TFNG answers for state display
                   const answersKey = `listening_answers_${examId}_${userId}`
                   const savedAnswers = localStorage.getItem(answersKey)
-                  const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
+                  const answersArray: any[] = savedAnswers ? JSON.Parse(savedAnswers) : []
                   const answerEntry = answersArray.find(
                     (item: any) => item.l_questionsID === question.id && item.question_type === "TFNG",
                   )
                   currentAnswer = answerEntry ? answerEntry.answer : {}
+                } else if (questionType === "SUMMARY_DRAG") {
+                  currentAnswer = answers[questionId] || {}
                 } else {
                   currentAnswer = answers[questionId] || ""
                 }
 
-                // Calculate how many inputs this question has
                 const questionCount = getQuestionCount(question)
                 const questionStartNum = sequentialQuestionNumber
                 const questionEndNum = sequentialQuestionNumber + questionCount - 1
 
-                // Increment the counter for the next question
                 sequentialQuestionNumber += questionCount
 
                 let parsedOptions = question.options
@@ -1878,7 +1960,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                   >
                     {/* Questions Header - Show for specific question types */}
                     {(question.q_type === "MCQ_SINGLE" && isFirstInGroup) ||
-                    ["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING", "SENTENCE_COMPLETION"].includes(
+                    ["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING", "SENTENCE_COMPLETION", "SUMMARY_DRAG"].includes(
                       question.q_type || "",
                     ) ||
                     (question.q_type === "NOTE_COMPLETION" && questionCount !== 10) ||
@@ -1897,9 +1979,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 )
                                 const totalQuestionsInGroup = groupQuestions.length
                                 const groupEndNum = questionStartNum + totalQuestionsInGroup - 1
-                                return `Questions ${totalQuestionsInGroup > 1 ? `${questionStartNum}–${groupEndNum}` : questionStartNum}`
+                                return `Questions ${questionStartNum}–${groupEndNum}`
                               })()
-                            : `Questions ${questionCount > 1 ? `${questionStartNum}–${questionEndNum}` : questionStartNum}`}
+                            : `Questions ${questionStartNum}–${questionEndNum}`}
                         </h4>
                       </div>
                     ) : null}
@@ -1916,7 +1998,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                     )}
 
                     {/* q_text - Show if exists for specific question types */}
-                    {(["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING"].includes(question.q_type || "") ||
+                    {(["MCQ_MULTI", "TABLE_COMPLETION", "MAP_LABELING", "SUMMARY_DRAG"].includes(
+                      question.q_type || "",
+                    ) ||
                       (question.q_type === "NOTE_COMPLETION" && questionCount !== 10) ||
                       question.q_type === "TFNG" ||
                       question.q_type === "FLOW_CHART") &&
@@ -1939,6 +2023,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       "TFNG",
                       "MATCHING_INFORMATION",
                       "SENTENCE_COMPLETION",
+                      "SUMMARY_DRAG",
                     ].includes(question.q_type || "") && (
                       <div className="flex flex-row items-start gap-3 mb-4">
                         <div
@@ -2170,34 +2255,36 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                           >
                             {questionStartNum}
                           </div>
-                          <div
-                            className="text-base leading-relaxed text-gray-900 flex-1"
-                            style={{ fontSize: `${textSize}px` }}
-                          >
-                            {(() => {
-                              const text = question.q_text || ""
-                              const parts = text.split(/_+/)
+                          {question.q_text && (
+                            <div
+                              className="text-base leading-relaxed text-gray-900 flex-1"
+                              style={{ fontSize: `${textSize}px` }}
+                            >
+                              {(() => {
+                                const text = question.q_text || ""
+                                const parts = text.split(/_+/)
 
-                              // Always show inline input
-                              return (
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {parts.map((part, index) => (
-                                    <React.Fragment key={index}>
-                                      <span dangerouslySetInnerHTML={{ __html: part }} />
-                                      {index < parts.length - 1 && (
-                                        <Input
-                                          value={currentAnswer || ""}
-                                          onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                                          className="inline-block w-32 px-2 py-1 text-sm bg-gray-100 border-gray-300 focus:border-gray-500 rounded"
-                                          placeholder={questionStartNum.toString()}
-                                        />
-                                      )}
-                                    </React.Fragment>
-                                  ))}
-                                </div>
-                              )
-                            })()}
-                          </div>
+                                // Always show inline input
+                                return (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {parts.map((part, index) => (
+                                      <React.Fragment key={index}>
+                                        <span dangerouslySetInnerHTML={{ __html: part }} />
+                                        {index < parts.length - 1 && (
+                                          <Input
+                                            value={currentAnswer || ""}
+                                            onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                                            className="inline-block w-32 px-2 py-1 text-sm bg-gray-100 border-gray-300 focus:border-gray-500 rounded"
+                                            placeholder={questionStartNum.toString()}
+                                          />
+                                        )}
+                                      </React.Fragment>
+                                    ))}
+                                  </div>
+                                )
+                              })()}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -2254,7 +2341,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                             <thead>
                               <tr className="bg-gray-50">
                                 <th
-                                  className="border p-3 text-left font-semibold text-black border-gray-300"
+                                  className="p-3 text-left font-semibold text-black border-gray-300"
                                   style={{ fontSize: `${textSize}px` }}
                                 >
                                   Questions {questionStartNum}–{questionEndNum}
@@ -2263,7 +2350,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                   Object.keys(question.choices).map((choiceKey) => (
                                     <th
                                       key={choiceKey}
-                                      className="border p-3 text-center font-semibold w-16 text-black border-gray-300"
+                                      className="p-3 text-center font-semibold w-16 text-black border-gray-300"
                                       style={{ fontSize: `${textSize}px` }}
                                     >
                                       {choiceKey}
@@ -2909,6 +2996,227 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
 
+                    {question.q_type === "SUMMARY_DRAG" &&
+                      (() => {
+                        // Moved state declarations here to fix lint error
+                        // const [draggedItem, setDraggedItem] = useState<string | null>(null)
+                        // const [dragSource, setDragSource] = useState<string | null>(null)
+
+                        // Parse options and choices
+                        let optionsData: Record<string, string> = {}
+                        let choicesArray: string[] = []
+                        let headersData: string[] = []
+
+                        if (question.options) {
+                          if (typeof question.options === "object" && !Array.isArray(question.options)) {
+                            optionsData = question.options
+                          } else if (typeof question.options === "string") {
+                            try {
+                              optionsData = JSON.parse(question.options)
+                            } catch (e) {
+                              console.error("[v0] Failed to parse SUMMARY_DRAG options:", e)
+                            }
+                          }
+                        }
+
+                        if (question.choices) {
+                          if (Array.isArray(question.choices)) {
+                            choicesArray = question.choices
+                          } else if (typeof question.choices === "string") {
+                            try {
+                              choicesArray = JSON.parse(question.choices)
+                            } catch (e) {
+                              console.error("[v0] Failed to parse SUMMARY_DRAG choices:", e)
+                            }
+                          }
+                        }
+
+                        if (question.rows?.headers && Array.isArray(question.rows.headers)) {
+                          headersData = question.rows.headers
+                        }
+
+                        // Get used choices
+                        const usedChoices = new Set<string>()
+                        if (currentAnswer && typeof currentAnswer === "object") {
+                          Object.values(currentAnswer).forEach((value) => {
+                            if (value) usedChoices.add(value as string)
+                          })
+                        }
+
+                        const availableChoices = choicesArray.filter((choice) => !usedChoices.has(choice))
+
+                        const handleDragStart = (e: React.DragEvent<HTMLDivElement>, choice: string) => {
+                          e.dataTransfer.effectAllowed = "move"
+                          e.dataTransfer.setData("text/plain", choice)
+                          setDraggedItem(choice)
+                          setDragSource("choices")
+                        }
+
+                        const handleDragStartFromGap = (e: React.DragEvent<HTMLDivElement>, optionKey: string) => {
+                          const currentValue = currentAnswer?.[optionKey]
+                          if (currentValue) {
+                            e.dataTransfer.effectAllowed = "move"
+                            e.dataTransfer.setData("text/plain", currentValue)
+                            e.dataTransfer.setData("removeFrom", optionKey)
+                            setDraggedItem(currentValue)
+                            setDragSource("gap")
+                          }
+                        }
+
+                        const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = "move"
+                          e.currentTarget.classList.add("bg-blue-100", "border-blue-500")
+                        }
+
+                        const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.currentTarget.classList.remove("bg-blue-100", "border-blue-500")
+                        }
+
+                        const handleDropOnGap = (e: React.DragEvent<HTMLDivElement>, optionKey: string) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.remove("bg-blue-100", "border-blue-500")
+
+                          const choice = e.dataTransfer.getData("text/plain")
+                          const removeFrom = e.dataTransfer.getData("removeFrom")
+
+                          if (choice) {
+                            const newAnswer = { ...currentAnswer }
+                            newAnswer[optionKey] = choice
+
+                            // If dragging from another gap, clear that gap
+                            if (removeFrom && removeFrom !== optionKey) {
+                              delete newAnswer[removeFrom]
+                            }
+
+                            handleAnswerChange(question.id.toString(), newAnswer)
+                          }
+
+                          setDraggedItem(null)
+                          setDragSource(null)
+                        }
+
+                        const handleDropOnChoices = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.remove("bg-blue-100", "border-blue-500")
+
+                          const removeFrom = e.dataTransfer.getData("removeFrom")
+                          if (removeFrom) {
+                            const newAnswer = { ...currentAnswer }
+                            delete newAnswer[removeFrom]
+                            handleAnswerChange(question.id.toString(), newAnswer)
+                          }
+
+                          setDraggedItem(null)
+                          setDragSource(null)
+                        }
+
+                        return (
+                          <div className="space-y-6">
+                           
+
+                            {/* Main drag-and-drop area */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                              {/* Left column: Options with gaps */}
+                              <div className="space-y-4">
+                                {/* Header */}
+                                <div className="font-bold text-gray-900" style={{ fontSize: `${textSize}px` }}>
+                                  <strong>{headersData[0]}</strong>
+                                </div>
+
+                                {/* Options rows */}
+                                <div className="space-y-3">
+                                  {Object.entries(optionsData).map(([optionKey, optionText], index) => {
+                                    const actualQuestionNum = questionStartNum + index
+                                    const currentValue = currentAnswer?.[optionKey]
+
+                                    return (
+                                      <div key={optionKey} className="flex items-center gap-4">
+                                        {/* Option text */}
+                                        <span className="text-gray-900" style={{ fontSize: `${textSize}px` }}>
+                                          {optionText}
+                                        </span>
+
+                                        {/* Drop zone with dashed border */}
+                                        <div
+                                          className="border-2 border-dashed border-blue-400 rounded px-4 py-2 min-w-[100px] text-center flex-shrink-0 hover:bg-blue-50 transition-colors"
+                                          onDragOver={handleDragOver}
+                                          onDragLeave={handleDragLeave}
+                                          onDrop={(e) => handleDropOnGap(e, optionKey)}
+                                        >
+                                          {currentValue ? (
+                                            <div
+                                              draggable
+                                              onDragStart={(e) => handleDragStartFromGap(e, optionKey)}
+                                              className="cursor-move"
+                                            >
+                                              <span
+                                                className="text-gray-900 font-bold"
+                                                style={{ fontSize: `${textSize}px` }}
+                                              >
+                                                {currentValue}
+                                              </span>
+                                            </div>
+                                          ) : (
+                                            <span
+                                              className="text-gray-400 font-bold"
+                                              style={{ fontSize: `${textSize}px` }}
+                                            >
+                                              {actualQuestionNum}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* Right column: Draggable choices */}
+                              <div className="space-y-4">
+                                {/* Header */}
+                                <div className="font-bold text-gray-900" style={{ fontSize: `${textSize}px` }}>
+                                  <strong>{headersData[1]}</strong>
+                                </div>
+
+                                <div
+                                  className="border-2 border-dashed border-gray-300 rounded px-4 py-3 min-h-[40px] bg-gray-50 hover:bg-gray-100 transition-colors text-center text-sm text-gray-500"
+                                  onDragOver={handleDragOver}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={handleDropOnChoices}
+                                ></div>
+
+                                {/* Choices */}
+                                <div className="space-y-2">
+                                  {availableChoices.map((choice, index) => (
+                                    <div
+                                      key={index}
+                                      draggable
+                                      onDragStart={(e) => handleDragStart(e, choice)}
+                                      onDragEnd={() => {
+                                        setDraggedItem(null)
+                                        setDragSource(null)
+                                      }}
+                                      className={`border  rounded px-4 py-2 cursor-move hover:shadow-md transition-all ${
+                                        draggedItem === choice ? "opacity-50 bg-white" : "bg-white"
+                                      }`}
+                                    >
+                                      <span className="text-gray-900" style={{ fontSize: `${textSize}px` }}>
+                                        {choice}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {availableChoices.length === 0 && (
+                                    <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                    {/* This is the section that was in the updates */}
                     {![
                       "TFNG",
                       "TRUE_FALSE_NOT_GIVEN",
@@ -2921,14 +3229,22 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       "MAP_LABELING",
                       "FLOW_CHART",
                       "NOTE_COMPLETION",
+                      "SUMMARY_DRAG",
                     ].includes(question.q_type || "") && (
-                      <div className="space-y-2">
-                        <Input
-                          value={currentAnswer || ""}
-                          onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                          className="w-full text-sm sm:text-base bg-white border-gray-300 focus:border-gray-500"
-                          placeholder="Answer"
-                        />
+                      <div className="flex flex-row items-start gap-3 mb-4">
+                        <div
+                          className="text-base sm:text-lg font-semibold bg-gray-600 text-white px-3 py-1 rounded flex-shrink-0"
+                          style={{ fontSize: `${textSize * 1.125}px` }}
+                        >
+                          {questionCount > 1 ? `${questionStartNum} - ${questionEndNum}` : questionStartNum}
+                        </div>
+                        {question.q_text && (
+                          <div
+                            className="text-gray-700 flex-1"
+                            style={{ fontSize: `${textSize}px` }}
+                            dangerouslySetInnerHTML={{ __html: question.q_text }}
+                          />
+                        )}
                       </div>
                     )}
                   </div>

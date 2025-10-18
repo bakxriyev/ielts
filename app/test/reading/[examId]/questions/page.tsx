@@ -299,7 +299,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             }
           })
 
-          // Simple sequential numbering - Part 1: 1-13, Part 2: 14-26, Part 3: 27-40
           let currentQNum = 1
 
           // Process Part 1
@@ -314,9 +313,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
             sortedRQuestions.forEach((question) => {
               const questionId = `${questionGroup.id}_${question.id}`
-              numbers[questionId] = currentQNum
 
               if (question.q_type === "MATCHING_HEADINGS") {
+                numbers[questionId] = currentQNum
                 const matchingPassage = data.passages.find((p) => p.type === "matching")
                 if (matchingPassage) {
                   const underscorePattern = /_{2,}/g
@@ -328,9 +327,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   }
                 }
               } else if (question.q_type === "MCQ_MULTI") {
+                numbers[questionId] = currentQNum
                 const correctCount = question.correct_answers?.length || 1
                 currentQNum += correctCount
               } else if (question.q_type === "TABLE_COMPLETION") {
+                numbers[questionId] = currentQNum
                 if (question.rows && Array.isArray(question.rows)) {
                   question.rows.forEach((row, rowIndex) => {
                     if (row.cells && Array.isArray(row.cells)) {
@@ -355,6 +356,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   })
                 }
               } else if (question.q_type === "MATCHING_INFORMATION") {
+                numbers[questionId] = currentQNum
                 const rowCount = (question as any).rows?.length || 1
                 for (let i = 0; i < rowCount; i++) {
                   const rowQuestionId = `${questionId}_row_${i}`
@@ -362,6 +364,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   currentQNum++
                 }
               } else if (question.q_type === "SENTENCE_COMPLETION") {
+                numbers[questionId] = currentQNum
                 const blankCount = (question.q_text?.match(/_+/g) || []).length
                 if (blankCount > 0) {
                   currentQNum += blankCount
@@ -369,6 +372,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   currentQNum++
                 }
               } else {
+                numbers[questionId] = currentQNum
                 currentQNum++
               }
             })
@@ -387,9 +391,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
             sortedRQuestions.forEach((question) => {
               const questionId = `${questionGroup.id}_${question.id}`
-              numbers[questionId] = currentQNum
 
               if (question.q_type === "MATCHING_HEADINGS") {
+                numbers[questionId] = currentQNum
                 const matchingPassage = data.passages.find((p) => p.type === "matching")
                 if (matchingPassage) {
                   const underscorePattern = /_{2,}/g
@@ -401,9 +405,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   }
                 }
               } else if (question.q_type === "MCQ_MULTI") {
+                numbers[questionId] = currentQNum
                 const correctCount = question.correct_answers?.length || 1
                 currentQNum += correctCount
               } else if (question.q_type === "TABLE_COMPLETION") {
+                numbers[questionId] = currentQNum
                 if (question.rows && Array.isArray(question.rows)) {
                   question.rows.forEach((row, rowIndex) => {
                     if (row.cells && Array.isArray(row.cells)) {
@@ -428,6 +434,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   })
                 }
               } else if (question.q_type === "MATCHING_INFORMATION") {
+                numbers[questionId] = currentQNum
                 const rowCount = (question as any).rows?.length || 1
                 for (let i = 0; i < rowCount; i++) {
                   const rowQuestionId = `${questionId}_row_${i}`
@@ -435,6 +442,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   currentQNum++
                 }
               } else if (question.q_type === "SENTENCE_COMPLETION") {
+                numbers[questionId] = currentQNum
                 const blankCount = (question.q_text?.match(/_+/g) || []).length
                 if (blankCount > 0) {
                   currentQNum += blankCount
@@ -442,6 +450,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   currentQNum++
                 }
               } else {
+                numbers[questionId] = currentQNum
                 currentQNum++
               }
             })
@@ -460,9 +469,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
             sortedRQuestions.forEach((question) => {
               const questionId = `${questionGroup.id}_${question.id}`
-              numbers[questionId] = currentQNum
 
               if (question.q_type === "MATCHING_HEADINGS") {
+                numbers[questionId] = currentQNum
                 const matchingPassage = data.passages.find((p) => p.type === "matching")
                 if (matchingPassage) {
                   const underscorePattern = /_{2,}/g
@@ -474,9 +483,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   }
                 }
               } else if (question.q_type === "MCQ_MULTI") {
+                numbers[questionId] = currentQNum
                 const correctCount = question.correct_answers?.length || 1
                 currentQNum += correctCount
               } else if (question.q_type === "TABLE_COMPLETION") {
+                numbers[questionId] = currentQNum
                 if (question.rows && Array.isArray(question.rows)) {
                   question.rows.forEach((row, rowIndex) => {
                     if (row.cells && Array.isArray(row.cells)) {
@@ -501,6 +512,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   })
                 }
               } else if (question.q_type === "MATCHING_INFORMATION") {
+                numbers[questionId] = currentQNum
                 const rowCount = (question as any).rows?.length || 1
                 for (let i = 0; i < rowCount; i++) {
                   const rowQuestionId = `${questionId}_row_${i}`
@@ -508,6 +520,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   currentQNum++
                 }
               } else if (question.q_type === "SENTENCE_COMPLETION") {
+                numbers[questionId] = currentQNum
                 const blankCount = (question.q_text?.match(/_+/g) || []).length
                 if (blankCount > 0) {
                   currentQNum += blankCount
@@ -515,11 +528,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   currentQNum++
                 }
               } else {
+                numbers[questionId] = currentQNum
                 currentQNum++
               }
             })
           })
 
+          console.log("[v0] Question numbers assigned:", numbers)
           setQuestionNumbers(numbers)
           setTotalQuestions(40)
         }
@@ -657,7 +672,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       !questionId.includes("_row_") &&
       !questionId.includes("_summary_")
         ? parts[1]
-        : parts[parts.length - 2] // Handle cases like 'MATCHING_HEADINGS' and 'TABLE_COMPLETION'
+        : parts[parts.length - 2]
 
     const questionGroup = testData?.questions.find((qg) => qg.id.toString() === questionGroupId)
     const question = questionGroup?.r_questions?.find((rq) => rq.id.toString() === rQuestionId)
@@ -708,7 +723,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             ),
         )
       } else {
-        // For regular questions (MCQ_SINGLE, TFNG, etc.)
         answersArray = answersArray.filter(
           (item: any) =>
             !(
@@ -753,7 +767,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         return true
       })
 
-      // Find the correct question group and r_question id for MATCHING_HEADINGS
       const matchingQuestionGroup = testData?.questions.find((qg) =>
         qg.r_questions?.some((q) => q.q_type === "MATCHING_HEADINGS"),
       )
@@ -829,7 +842,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         answer: answer,
       })
     } else {
-      // For regular questions (MCQ_SINGLE, TFNG, etc.)
       answersArray = answersArray.filter(
         (item: any) =>
           !(
@@ -1732,50 +1744,52 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
           return (
             <div key={question.id} id={`question-${questionGroup.id}_${question.id}`} className="space-y-4">
-              {question.q_type !== "MCQ_MULTI" && question.q_type !== "MATCHING_HEADINGS" && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
-                      {(() => {
-                        const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+              {question.q_type !== "MCQ_MULTI" &&
+                question.q_type !== "MATCHING_HEADINGS" &&
+                question.q_type !== "MATCHING_INFORMATION" && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
+                        {(() => {
+                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
 
-                        if (question.q_type === "TABLE_COMPLETION") {
-                          let inputCount = 0
-                          if (question.rows && Array.isArray(question.rows)) {
-                            question.rows.forEach((row) => {
-                              if (row.cells && Array.isArray(row.cells)) {
-                                row.cells.forEach((cell) => {
-                                  if (cell === "" || cell === "_") {
+                          if (question.q_type === "TABLE_COMPLETION") {
+                            let inputCount = 0
+                            if (question.rows && Array.isArray(question.rows)) {
+                              question.rows.forEach((row) => {
+                                if (row.cells && Array.isArray(row.cells)) {
+                                  row.cells.forEach((cell) => {
+                                    if (cell === "" || cell === "_") {
+                                      inputCount++
+                                    }
+                                  })
+                                }
+                              })
+                            } else if (question.table_structure?.rows) {
+                              question.table_structure.rows.forEach((row) => {
+                                Object.values(row).forEach((value) => {
+                                  if (value === "" || value === "_") {
                                     inputCount++
                                   }
                                 })
-                              }
-                            })
-                          } else if (question.table_structure?.rows) {
-                            question.table_structure.rows.forEach((row) => {
-                              Object.values(row).forEach((value) => {
-                                if (value === "" || value === "_") {
-                                  inputCount++
-                                }
                               })
-                            })
+                            }
+                            const endNum = startNum + inputCount - 1
+                            return inputCount > 1 ? `${startNum}–${endNum}` : startNum
                           }
-                          const endNum = startNum + inputCount - 1
-                          return inputCount > 1 ? `${startNum}–${endNum}` : startNum
-                        }
 
-                        return startNum
-                      })()}
-                    </span>
+                          return startNum
+                        })()}
+                      </span>
+                    </div>
+                    {question.q_text && (
+                      <div
+                        className={`text-lg font-medium ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
                   </div>
-                  {question.q_type !== "SENTENCE_COMPLETION" && question.q_text && (
-                    <div
-                      className={`text-lg font-medium ${colorStyles.text}`}
-                      dangerouslySetInnerHTML={{ __html: question.q_text }}
-                    />
-                  )}
-                </div>
-              )}
+                )}
 
               {(question.q_type === "TFNG" || question.q_type === "TRUE_FALSE_NOT_GIVEN") && (
                 <div className="space-y-3">
@@ -1835,54 +1849,80 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               )}
 
               {question.q_type === "MCQ_MULTI" && question.options && (
-                <div className="space-y-3">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
-                        Questions {(() => {
-                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-                          const correctCount = question.correct_answers?.length || 1
-                          const endNum = startNum + correctCount - 1
-                          return correctCount > 1 ? `${startNum}–${endNum}` : `${startNum}`
-                        })()}
-                      </span>
-                    </div>
-                    {question.q_text && (
-                      <div
-                        className={`text-lg font-medium ${colorStyles.text}`}
-                        dangerouslySetInnerHTML={{ __html: question.q_text }}
-                      />
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    {question.options.map((option, index) => (
-                      <div key={index} className="flex items-center space-x-3">
-                        <input
-                          type="checkbox"
-                          id={`q${question.id}-${option.key}`}
-                          checked={Array.isArray(currentAnswer) && currentAnswer.includes(option.key)}
-                          onChange={(e) => {
-                            const currentAnswers = Array.isArray(currentAnswer) ? currentAnswer : []
-                            if (e.target.checked) {
-                              handleAnswerChange(questionId, [...currentAnswers, option.key])
-                            } else {
-                              handleAnswerChange(
-                                questionId,
-                                currentAnswers.filter((a) => a !== option.key),
-                              )
-                            }
-                          }}
-                          className="w-5 h-5 rounded border-gray-300"
-                        />
-                        <label
-                          htmlFor={`q${question.id}-${option.key}`}
-                          className={`flex-1 cursor-pointer ${colorStyles.text}`}
-                        >
-                          <span dangerouslySetInnerHTML={{ __html: option.text }} />
-                        </label>
-                      </div>
-                    ))}
-                  </div>
+                <div className="space-y-4">
+                  {(() => {
+                    const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                    const correctCount = question.correct_answers?.length || 1
+                    const subQuestions: Array<{ start: number; end: number; text: string }> = []
+
+                    // Parse q_text to split into sub-questions
+                    const qTexts = question.q_text?.split(/\n\n+/) || []
+
+                    if (qTexts.length > 1) {
+                      // Multiple sub-questions
+                      qTexts.forEach((text, index) => {
+                        const subStart = startNum + index * correctCount
+                        const subEnd = subStart + correctCount - 1
+                        subQuestions.push({ start: subStart, end: subEnd, text: text.trim() })
+                      })
+                    } else {
+                      // Single question
+                      subQuestions.push({
+                        start: startNum,
+                        end: startNum + correctCount - 1,
+                        text: question.q_text || "",
+                      })
+                    }
+
+                    return (
+                      <>
+                        {subQuestions.map((subQ, idx) => (
+                          <div key={idx} className="space-y-3">
+                            <div className="flex items-start gap-3">
+                              <span className="text-lg font-bold text-gray-700 whitespace-nowrap">
+                                {subQ.start}–{subQ.end}
+                              </span>
+                              {subQ.text && (
+                                <div
+                                  className={`text-lg font-medium flex-1 ${colorStyles.text}`}
+                                  dangerouslySetInnerHTML={{ __html: subQ.text }}
+                                />
+                              )}
+                            </div>
+                            <div className="space-y-2 ml-16">
+                              {question.options.map((option, index) => (
+                                <div key={index} className="flex items-center space-x-3">
+                                  <input
+                                    type="checkbox"
+                                    id={`q${question.id}-${idx}-${option.key}`}
+                                    checked={Array.isArray(currentAnswer) && currentAnswer.includes(option.key)}
+                                    onChange={(e) => {
+                                      const currentAnswers = Array.isArray(currentAnswer) ? currentAnswer : []
+                                      if (e.target.checked) {
+                                        handleAnswerChange(questionId, [...currentAnswers, option.key])
+                                      } else {
+                                        handleAnswerChange(
+                                          questionId,
+                                          currentAnswers.filter((a) => a !== option.key),
+                                        )
+                                      }
+                                    }}
+                                    className="w-5 h-5 rounded border-gray-300"
+                                  />
+                                  <label
+                                    htmlFor={`q${question.id}-${idx}-${option.key}`}
+                                    className={`flex-1 cursor-pointer ${colorStyles.text}`}
+                                  >
+                                    <span dangerouslySetInnerHTML={{ __html: option.text }} />
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )
+                  })()}
                 </div>
               )}
 
@@ -1942,20 +1982,18 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               {question.q_type === "MATCHING_HEADINGS" && question.choices && (
                 <div className="space-y-4">
                   <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
-                        Questions {(() => {
-                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-                          const matchingPassage = getCurrentPartPassages.find((p) => p.type === "matching")
-                          if (matchingPassage) {
-                            const underscorePattern = /_{2,}/g
-                            const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
-                            const endNum = startNum + matches.length - 1
-                            return matches.length > 1 ? `${startNum}–${endNum}` : startNum
-                          }
-                          return startNum
-                        })()}
-                      </span>
+                    <div className="text-2xl font-bold">
+                      Questions {(() => {
+                        const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                        const matchingPassage = getCurrentPartPassages.find((p) => p.type === "matching")
+                        if (matchingPassage) {
+                          const underscorePattern = /_{2,}/g
+                          const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
+                          const endNum = startNum + matches.length - 1
+                          return matches.length > 1 ? `${startNum}–${endNum}` : startNum
+                        }
+                        return startNum
+                      })()}
                     </div>
                     {question.q_text && (
                       <div
@@ -1966,6 +2004,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   </div>
 
                   <div className="mt-4">
+                    <h4 className="font-bold text-lg mb-3">List of Headings</h4>
                     <div className="grid grid-cols-1 gap-2">
                       {Object.entries(question.choices).map(([key, text]) => (
                         <div
