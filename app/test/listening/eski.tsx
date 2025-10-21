@@ -1,16 +1,17 @@
 "use client"
 
+import React from "react"
+
 import { useEffect, useState, useRef, type ReactElement } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { markSectionCompleted, areAllSectionsCompleted } from "../../../../../lib/test-strotage"
 import { Volume2, VolumeX, Wifi, Bell, Menu, X } from "lucide-react"
 import { useCustomAlert } from "@/components/custom-allert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Slider } from "@/components/ui/slider"
 import { CompletionModal } from "@/components/completion-modal"
-import React from "react"
-import { Input } from "@/components/ui/input"
 
 interface LQuestion {
   id: number
@@ -1967,7 +1968,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
 
-                       {question.q_type === "TFNG" && question.photo && question.choices && (
+                    {question.q_type === "TFNG" && question.photo && question.choices && (
                       <div className="space-y-4">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           <div className="lg:col-span-1">
@@ -2130,16 +2131,13 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         {question.q_text && (
                           <div className="mb-[6px] text-[15px] font-semibold text-gray-900 flex items-center gap-2">
                             <span className="border-2 border-blue-500 text-gray-900 bg-white px-[6px] py-[1px] rounded-[4px]">
-                              {questionStartNum}–
-                              {questionStartNum +
-                                (Array.isArray(question.correct_answers) ? question.correct_answers.length : 1) -
-                                1}
+                              {questionStartNum}–{questionStartNum + optionsArray.length - 1}
                             </span>
 
-                            {/* <span
+                            <span
                               className="text-[15px] text-gray-900 font-semibold"
                               dangerouslySetInnerHTML={{ __html: question.q_text }}
-                            /> */}
+                            />
                           </div>
                         )}
 
@@ -2191,893 +2189,924 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
 
-                               {question.q_type === "SENTENCE_COMPLETION" && (
-                                    <div className="space-y-2">
-                                      <div className="flex items-start gap-3">
+                    {question.q_type === "SENTENCE_COMPLETION" && (
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-3">
+                          <div
+                            className="text-base sm:text-lg font-semibold bg-white border-2 border-blue-500 text-gray-900 px-3 py-1 rounded flex-shrink-0"
+                            style={{ fontSize: `${textSize * 1.125}px` }}
+                          >
+                            {questionStartNum}
+                          </div>
+                          {question.q_text && (
+                            <div
+                              className="text-base leading-relaxed text-gray-900 flex-1"
+                              style={{ fontSize: `${textSize}px` }}
+                            >
+                              {(() => {
+                                const text = question.q_text || ""
+                                const parts = text.split(/_+/)
+
+                                return (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {parts.map((part, index) => (
+                                      <React.Fragment key={index}>
+                                        <span dangerouslySetInnerHTML={{ __html: part }} />
+                                        {index < parts.length - 1 && (
+                                          <Input
+                                            value={currentAnswer || ""}
+                                            onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                                            className="inline-block w-32 px-2 py-1 text-sm bg-white border-2 border-black focus:border-black rounded"
+                                            placeholder={questionStartNum.toString()}
+                                          />
+                                        )}
+                                      </React.Fragment>
+                                    ))}
+                                  </div>
+                                )
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {question.q_type === "SENTENCE_ENDINGS" && optionsArray.length > 0 && (
+                      <div className="space-y-4">
+                        <div className="space-y-3">
+                          <div className="border-2 border-dashed border-blue-300 bg-blue-50 p-3 rounded-lg min-h-[40px] flex items-center">
+                            {currentAnswer ? (
+                              <span className="text-blue-800 font-medium">{currentAnswer}</span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">Select an option</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="border-t pt-3">
+                          <p className="text-xs text-gray-600 mb-2">Choices:</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {optionsArray.map((option) => (
+                              <Button
+                                key={option.key}
+                                variant={currentAnswer === option.key ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => handleAnswerChange(questionId, option.key)}
+                                className={`text-xs p-2 h-auto text-left ${
+                                  currentAnswer === option.key
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
+                                }`}
+                              >
+                                <span className="font-medium">{option.key}</span> {option.text}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+            {question.q_type === "MATCHING_INFORMATION" && (
+                      <div className="space-y-5">
+                        {isFirstInGroup && questionGroup?.instruction && (
+                          <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-3">
+                            <div
+                              className="text-gray-800 leading-relaxed"
+                              style={{ fontSize: `${textSize}px` }}
+                              dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                            />
+                          </div>
+                        )}
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-2 border-black text-base">
+                            <thead>
+                              <tr className="bg-gray-100 border-b-2 border-black">
+                                <th
+                                  className="p-2 text-left font-bold text-black border-r-2 border-black"
+                                  style={{ fontSize: `${textSize}px` }}
+                                >
+                                  Questions {questionStartNum}–{questionEndNum}
+                                </th>
+                                {question.choices &&
+                                  Object.keys(question.choices).map((choiceKey) => (
+                                    <th
+                                      key={choiceKey}
+                                      className="p-2 text-center font-bold text-black border-l-2 border-black w-14"
+                                      style={{ fontSize: `${textSize * 0.95}px` }}
+                                    >
+                                      {choiceKey}
+                                    </th>
+                                  ))}
+                              </tr>
+                            </thead>
+
+                            <tbody>
+                              {question.rows?.map((rowText, index) => (
+                                <tr key={index} className="border-b-2 border-black hover:bg-blue-50 transition">
+                                  <td className="border-r-2 border-black p-2 text-black font-semibold">
+                                    <div className="flex items-center gap-2">
+                                      <span className="bg-white border-2 border-[#4B61D1] text-gray-900 w-6 h-6 rounded flex items-center justify-center text-xs font-bold">
+                                        {questionStartNum + index}
+                                      </span>
+                                      <span
+                                        className="text-gray-900"
+                                        style={{ fontSize: `${textSize * 0.95}px` }}
+                                        dangerouslySetInnerHTML={{ __html: rowText }}
+                                      />
+                                    </div>
+                                  </td>
+
+                                  {question.choices &&
+                                    Object.keys(question.choices).map((choiceKey) => (
+                                      <td key={choiceKey} className="border-l-2 border-black p-2 text-center">
+                                        <input
+                                          type="radio"
+                                          name={`matching_${question.id}_${index}`}
+                                          value={choiceKey}
+                                          checked={answers[`${question.id}_matching_${index}`] === choiceKey}
+                                          onChange={(e) =>
+                                            handleAnswerChange(`${question.id}_matching_${index}`, e.target.value)
+                                          }
+                                          className="w-4 h-4 accent-[#4B61D1] cursor-pointer"
+                                        />
+                                      </td>
+                                    ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="mt-5">
+                          <h5 className="font-bold mb-2 text-black" style={{ fontSize: `${textSize}px` }}>
+                            {question.q_text ? (
+                              <span dangerouslySetInnerHTML={{ __html: question.q_text }} />
+                            ) : (
+                              "Choices:"
+                            )}
+                          </h5>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-2 border-black text-base">
+                              <tbody>
+                                {question.choices &&
+                                  Object.entries(question.choices).map(([key, text]) => (
+                                    <tr key={key} className="border-b-2 border-black">
+                                      <td
+                                        className="border-r-2 border-black p-2 w-14 text-center font-bold bg-white text-black"
+                                        style={{ fontSize: `${textSize * 0.95}px` }}
+                                      >
+                                        {key}
+                                      </td>
+                                      <td
+                                        className="border-l-2 border-black p-2 text-black font-semibold"
+                                        style={{ fontSize: `${textSize * 0.95}px` }}
+                                      >
+                                        <span dangerouslySetInnerHTML={{ __html: text as string }} />
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+            {question.q_type === "TABLE_COMPLETION" && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse border-2 border-black">
+                          <tbody>
+                            {question.rows?.map((row: any, rowIndex: number) => {
+                              const cellInputCounter = 0
+                              return (
+                                <tr key={rowIndex}>
+                                  {row.cells?.map((cell: string, cellIndex: number) => {
+                                    const isEmptyOrUnderscore = cell === "" || cell === "_"
+                                    const hasUnderscores =
+                                      typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+
+                                    if (isEmptyOrUnderscore || hasUnderscores) {
+                                      const tableAnswersKey = `${questionId}_answer`
+                                      const tableAnswers = answers[tableAnswersKey] || {}
+                                      const cellKey = `${rowIndex}_${cellIndex}`
+
+                                      let inputQuestionNumber = questionStartNum
+                                      for (let r = 0; r < rowIndex; r++) {
+                                        for (let c = 0; c < row.cells.length; c++) {
+                                          const prevCell = question.rows[r].cells[c]
+                                          if (
+                                            prevCell === "" ||
+                                            prevCell === "_" ||
+                                            (typeof prevCell === "string" && /_+/.test(prevCell))
+                                          ) {
+                                            inputQuestionNumber++
+                                          }
+                                        }
+                                      }
+                                      for (let c = 0; c < cellIndex; c++) {
+                                        const prevCell = row.cells[c]
+                                        if (
+                                          prevCell === "" ||
+                                          prevCell === "_" ||
+                                          (typeof prevCell === "string" && /_+/.test(prevCell))
+                                        ) {
+                                          inputQuestionNumber++
+                                        }
+                                      }
+
+                                      return (
+                                        <td key={cellIndex} className="border-2 border-black p-2">
+                                          <div className="min-w-[150px]">
+                                            {hasUnderscores ? (
+                                              <div className="flex flex-wrap items-center gap-1">
+                                                {cell.split(/(_+)/).map((part: string, partIndex: number) => {
+                                                  if (/_+/.test(part)) {
+                                                    return (
+                                                      <Input
+                                                        key={partIndex}
+                                                        value={tableAnswers[cellKey] || ""}
+                                                        onChange={(e) =>
+                                                          handleAnswerChange(
+                                                            `${questionId}_table_${rowIndex}_${cellIndex}`,
+                                                            e.target.value,
+                                                          )
+                                                        }
+                                                        className="inline-block w-32 text-sm bg-white border-2 border-black focus:border-black text-center"
+                                                        placeholder={inputQuestionNumber.toString()}
+                                                      />
+                                                    )
+                                                  }
+                                                  return part ? (
+                                                    <span key={partIndex} className="text-gray-900 font-bold">
+                                                      {part}
+                                                    </span>
+                                                  ) : null
+                                                })}
+                                              </div>
+                                            ) : (
+                                              <Input
+                                                value={tableAnswers[cellKey] || ""}
+                                                onChange={(e) =>
+                                                  handleAnswerChange(
+                                                    `${questionId}_table_${rowIndex}_${cellIndex}`,
+                                                    e.target.value,
+                                                  )
+                                                }
+                                                className="w-full text-sm bg-white border-2 border-black focus:border-black text-center"
+                                                placeholder={inputQuestionNumber.toString()}
+                                              />
+                                            )}
+                                          </div>
+                                        </td>
+                                      )
+                                    }
+
+                                    return (
+                                      <td key={cellIndex} className="border-2 border-black p-2">
+                                        <span className="text-gray-900 font-bold">{cell}</span>
+                                      </td>
+                                    )
+                                  })}
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+            {question.q_type === "MAP_LABELING" && question.photo && question.rows && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                          <div className="lg:col-span-2">
+                            <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+                              <img
+                                src={`${process.env.NEXT_PUBLIC_API_URL}/uploads/l_questions/${question.photo}`}
+                                alt="Map"
+                                className="w-full h-auto"
+                                draggable={false}
+                              />
+                              {(() => {
+                                let rowsData: Record<string, any> = {}
+                                if (question.rows) {
+                                  if (typeof question.rows === "object") {
+                                    rowsData = question.rows
+                                  } else if (typeof question.rows === "string") {
+                                    try {
+                                      rowsData = JSON.parse(question.rows)
+                                    } catch (e) {
+                                      console.error("[v0] Failed to parse MAP_LABELING rows for rendering:", e)
+                                      console.error("[v0] Invalid rows data:", question.rows)
+                                    }
+                                  }
+                                }
+
+                                return Object.entries(rowsData).map(([position, coords]: [string, any], index) => {
+                                  const dropZoneQuestionId = `${question.id}_map_${position}`
+                                  const currentAnswer = answers[dropZoneQuestionId]
+                                  const questionNum = questionStartNum + index
+
+                                  let selectedOptionText = ""
+                                  if (currentAnswer) {
+                                    const selectedOption = optionsArray.find((opt) => opt.key === currentAnswer)
+                                    selectedOptionText = selectedOption?.text || ""
+                                  }
+
+                                  return (
+                                    <div
+                                      key={position}
+                                      className="absolute"
+                                      style={{
+                                        left: coords.x,
+                                        top: coords.y,
+                                        transform: "translate(-50%, -50%)",
+                                      }}
+                                      onDragOver={(e) => {
+                                        e.preventDefault()
+                                        e.currentTarget.classList.add("bg-blue-200", "scale-110")
+                                      }}
+                                      onDragLeave={(e) => {
+                                        e.currentTarget.classList.remove("bg-blue-200", "scale-110")
+                                      }}
+                                      onDrop={(e) => {
+                                        e.preventDefault()
+                                        e.currentTarget.classList.remove("bg-blue-200", "scale-110")
+                                        const optionKey = e.dataTransfer.getData("text/plain")
+                                        if (optionKey) {
+                                          handleAnswerChange(dropZoneQuestionId, optionKey, dropZoneQuestionId)
+                                        }
+                                      }}
+                                    >
+                                      <div className="flex flex-col items-center gap-1">
                                         <div
-                                          className="text-base sm:text-lg font-semibold bg-white border-2 border-blue-500 text-gray-900 px-3 py-1 rounded flex-shrink-0"
-                                          style={{ fontSize: `${textSize * 1.125}px` }}
+                                          draggable={!!currentAnswer}
+                                          onDragStart={(e) => {
+                                            if (currentAnswer) {
+                                              e.dataTransfer.setData("text/plain", currentAnswer)
+                                              e.dataTransfer.setData("removeFrom", dropZoneQuestionId)
+                                              e.currentTarget.classList.add("opacity-50")
+                                            }
+                                          }}
+                                          onDragEnd={(e) => {
+                                            e.currentTarget.classList.remove("opacity-50")
+                                          }}
+                                          className={`min-w-[80px] px-3 py-2 rounded-lg border-2 flex flex-col items-center justify-center text-sm font-semibold shadow-lg transition-all ${
+                                            currentAnswer
+                                              ? "bg-white border-gray-500 hover:bg-red-50 cursor-move"
+                                              : "bg-white border-dashed border-gray-400 hover:border-gray-600 hover:scale-105 cursor-pointer"
+                                          }`}
+                                          onClick={() => {
+                                            if (currentAnswer) {
+                                              handleAnswerChange(dropZoneQuestionId, null, dropZoneQuestionId)
+                                            }
+                                          }}
+                                          title={
+                                            currentAnswer
+                                              ? "Click to remove or drag back to options"
+                                              : "Drag option here"
+                                          }
                                         >
-                                          {questionStartNum}
+                                          <span className="text-gray-600 font-bold text-base">{questionNum}</span>
+                                          {currentAnswer && selectedOptionText && (
+                                            <span className="text-gray-700 text-xs mt-1 text-center">
+                                              {selectedOptionText}
+                                            </span>
+                                          )}
                                         </div>
-                                        {question.q_text && (
+                                      </div>
+                                    </div>
+                                  )
+                                })
+                              })()}
+                            </div>
+                          </div>
+
+                          <div className="lg:col-span-1">
+                            <div
+                              className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 sticky top-4"
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                const removeFrom = e.dataTransfer.types.includes("removefrom")
+                                if (removeFrom) {
+                                  e.currentTarget.classList.add("bg-blue-50", "border-blue-400")
+                                }
+                              }}
+                              onDragLeave={(e) => {
+                                e.currentTarget.classList.remove("bg-blue-50", "border-blue-400")
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                e.currentTarget.classList.remove("bg-blue-50", "border-blue-400")
+                                const removeFrom = e.dataTransfer.getData("removeFrom")
+                                if (removeFrom) {
+                                  handleAnswerChange(removeFrom, null, removeFrom)
+                                }
+                              }}
+                            >
+                              <h4 className="font-semibold text-gray-900 mb-4" style={{ fontSize: `${textSize}px` }}>
+                                Options
+                              </h4>
+                              <div className="space-y-2">
+                                {optionsArray
+                                  .filter((option) => {
+                                    let rowsData: Record<string, any> = {}
+                                    if (question.rows) {
+                                      if (typeof question.rows === "object") {
+                                        rowsData = question.rows
+                                      } else if (typeof question.rows === "string") {
+                                        try {
+                                          rowsData = JSON.parse(question.rows)
+                                        } catch (e) {
+                                          return true
+                                        }
+                                      }
+                                    }
+
+                                    const isUsed = Object.keys(rowsData).some((position) => {
+                                      const dropZoneQuestionId = `${question.id}_map_${position}`
+                                      return answers[dropZoneQuestionId] === option.key
+                                    })
+
+                                    return !isUsed
+                                  })
+                                  .map((option) => (
+                                    <div
+                                      key={option.key}
+                                      draggable
+                                      onDragStart={(e) => {
+                                        e.dataTransfer.setData("text/plain", option.key)
+                                        e.currentTarget.classList.add("opacity-50")
+                                      }}
+                                      onDragEnd={(e) => {
+                                        e.currentTarget.classList.remove("opacity-50")
+                                      }}
+                                      className="bg-white border-2 border-gray-300 rounded-lg p-3 cursor-move hover:border-gray-600 hover:shadow-md transition-all"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="bg-gray-700 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+                                          {option.key}
+                                        </span>
+                                        <span className="text-gray-900 font-medium text-sm">{option.text}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                {optionsArray.filter((option) => {
+                                  let rowsData: Record<string, any> = {}
+                                  if (question.rows) {
+                                    if (typeof question.rows === "object") {
+                                      rowsData = question.rows
+                                    } else if (typeof question.rows === "string") {
+                                      try {
+                                        rowsData = JSON.parse(question.rows)
+                                      } catch (e) {
+                                        return true
+                                      }
+                                    }
+                                  }
+                                  const isUsed = Object.keys(rowsData).some((position) => {
+                                    const dropZoneQuestionId = `${question.id}_map_${position}`
+                                    return answers[dropZoneQuestionId] === option.key
+                                  })
+                                  return !isUsed
+                                }).length === 0 && (
+                                  <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+              {question.q_type === "FLOW_CHART" && question.choices && (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                          <div className="lg:col-span-2">
+                            <div className="space-y-1">
+                              {Object.entries(question.choices).map(([stepNum, stepText]: [string, any], index) => {
+                                const hasBlank = stepText.includes("__")
+                                const flowChartQuestionId = question.id.toString()
+                                const allAnswers = answers[flowChartQuestionId]
+                                const currentAnswer =
+                                  allAnswers && typeof allAnswers === "object" && allAnswers[stepNum]
+                                    ? allAnswers[stepNum]
+                                    : ""
+
+                                const stepQuestionNum = hasBlank
+                                  ? (() => {
+                                      const allQuestions = getAllQuestions()
+                                      const baseQuestionIndex = allQuestions.findIndex(
+                                        (q) => q.id.toString() === flowChartQuestionId,
+                                      )
+                                      let questionCounter = 1
+                                      for (let i = 0; i < baseQuestionIndex; i++) {
+                                        questionCounter += getQuestionCount(allQuestions[i])
+                                      }
+                                      let blankCounter = 0
+                                      const sortedSteps = Object.entries(question.choices || {}).sort(
+                                        ([a], [b]) => Number(a) - Number(b),
+                                      )
+                                      for (const [step, text] of sortedSteps) {
+                                        if (typeof text === "string" && text.includes("__")) {
+                                          if (step === stepNum) {
+                                            return questionCounter + blankCounter
+                                          }
+                                          blankCounter++
+                                        }
+                                      }
+                                      return questionCounter
+                                    })()
+                                  : null
+
+                                return (
+                                  <React.Fragment key={stepNum}>
+                                    <div className="border border-gray-400 rounded-md p-2 bg-white shadow-sm">
+                                      {hasBlank ? (
+                                        <div className="text-[15px] text-gray-900 leading-snug">
+                                          {(() => {
+                                            const firstBlankIndex = stepText.indexOf("__")
+                                            if (firstBlankIndex === -1) return stepText
+                                            const beforeBlank = stepText.substring(0, firstBlankIndex)
+                                            const afterBlank = stepText
+                                              .substring(firstBlankIndex + 2)
+                                              .replace(/__/g, "")
+
+                                            return (
+                                              <>
+                                                {beforeBlank}
+                                                <span
+                                                  draggable={!!currentAnswer}
+                                                  onDragStart={(e) => {
+                                                    if (currentAnswer) {
+                                                      e.dataTransfer.setData("text/plain", currentAnswer)
+                                                      e.dataTransfer.setData("removeFrom", stepNum)
+                                                      e.dataTransfer.setData("removeFromQuestion", flowChartQuestionId)
+                                                      e.currentTarget.classList.add("opacity-50")
+                                                    }
+                                                  }}
+                                                  onDragEnd={(e) => {
+                                                    e.currentTarget.classList.remove("opacity-50")
+                                                  }}
+                                                  className={`inline-flex items-center gap-2 min-w-[120px] px-2 py-[4px] mx-[3px] border-2 border-dashed rounded-md transition-all 
+                                                    ${
+                                                      currentAnswer
+                                                        ? "bg-gray-50 border-gray-500 cursor-move hover:bg-red-50 hover:border-red-500"
+                                                        : "bg-gray-50 border-gray-400 hover:border-gray-600"
+                                                    }`}
+                                                  onDragOver={(e) => {
+                                                    e.preventDefault()
+                                                    e.currentTarget.classList.add("bg-gray-100", "scale-105")
+                                                  }}
+                                                  onDragLeave={(e) => {
+                                                    e.currentTarget.classList.remove("bg-gray-100", "scale-105")
+                                                  }}
+                                                  onDrop={(e) => {
+                                                    e.preventDefault()
+                                                    e.currentTarget.classList.remove("bg-gray-100", "scale-105")
+                                                    const optionKey = e.dataTransfer.getData("text/plain")
+                                                    if (optionKey) {
+                                                      const fullQuestionId = `${question.id}_flow_${stepNum}`
+                                                      handleAnswerChange(flowChartQuestionId, optionKey, fullQuestionId)
+                                                    }
+                                                  }}
+                                                  onClick={() => {
+                                                    if (currentAnswer) {
+                                                      const fullQuestionId = `${question.id}_flow_${stepNum}`
+                                                      handleAnswerChange(flowChartQuestionId, null, fullQuestionId)
+                                                    }
+                                                  }}
+                                                >
+                                                  <span className="bg-[#4B61D1] text-white px-2 py-[1px] rounded text-xs font-medium">
+                                                    {stepQuestionNum}
+                                                  </span>
+                                                  {currentAnswer ? (
+                                                    <span className="font-semibold text-gray-700 text-[14px]">
+                                                      {currentAnswer}
+                                                    </span>
+                                                  ) : (
+                                                    <span className="text-gray-400 text-sm">Drop here</span>
+                                                  )}
+                                                </span>
+                                                {afterBlank}
+                                              </>
+                                            )
+                                          })()}
+                                        </div>
+                                      ) : (
+                                        <div className="text-[15px] text-gray-900 leading-snug">{stepText}</div>
+                                      )}
+                                    </div>
+
+                                    {index < Object.keys(question.choices).length - 1 && (
+                                      <div className="flex justify-center relative h-5">
+                                        <div className="w-0.5 h-4 bg-gray-400"></div>
+                                        <div className="absolute bottom-0 w-0 h-0 border-l-[5px] border-r-[5px] border-t-[6px] border-l-transparent border-r-transparent border-t-gray-400"></div>
+                                      </div>
+                                    )}
+                                  </React.Fragment>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="lg:col-span-1">
+                            <div
+                              className="bg-gray-50 border border-gray-300 rounded-md p-3 sticky top-4 shadow-sm"
+                              onDragOver={(e) => e.preventDefault()}
+                            >
+                              <h4 className="font-semibold text-gray-900 mb-2" style={{ fontSize: `${textSize}px` }}>
+                                Options
+                              </h4>
+                              <div className="space-y-1">
+                                {question.options &&
+                                  Array.isArray(question.options) &&
+                                  question.options
+                                    .filter((optionKey: string) => {
+                                      const flowChartQuestionId = question.id.toString()
+                                      const allAnswers = answers[flowChartQuestionId]
+                                      if (!allAnswers || typeof allAnswers !== "object") return true
+                                      const isUsed = Object.values(allAnswers).includes(optionKey)
+                                      return !isUsed
+                                    })
+                                    .map((optionKey: string) => (
+                                      <div
+                                        key={optionKey}
+                                        draggable
+                                        onDragStart={(e) => {
+                                          e.dataTransfer.setData("text/plain", optionKey)
+                                          e.currentTarget.classList.add("opacity-50")
+                                        }}
+                                        onDragEnd={(e) => e.currentTarget.classList.remove("opacity-50")}
+                                        className="bg-white border border-gray-400 rounded-md p-2 cursor-move hover:border-[#4B61D1] hover:shadow transition-all"
+                                      >
+                                        <div className="flex items-center justify-center">
+                                          <span className="text-gray-900 font-medium text-sm">{optionKey}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {question.q_type === "NOTE_COMPLETION" && question.options && (
+                      <div className="space-y-4">
+                        <div className="bg-white border-2 border-gray-300 rounded-lg p-5">
+                          {(() => {
+                            const optionsText =
+                              typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+
+                            const parts = optionsText.split(/(____+)/)
+                            let currentInputIndex = 0
+
+                            return parts.map((part, index) => {
+                              if (part.match(/____+/)) {
+                                const questionNum = questionStartNum + currentInputIndex
+                                const inputId = `${question.id}_note_${currentInputIndex}`
+                                const currentAnswer = answers[inputId] || ""
+                                currentInputIndex++
+
+                                return (
+                                  <span key={index} className="inline-flex items-center mx-[4px] align-middle">
+                                    <input
+                                      type="text"
+                                      value={currentAnswer}
+                                      onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
+                                      placeholder={questionNum.toString()}
+                                      className="inline-block w-[200px] px-3 py-[2px] text-center text-sm 
+                                                 bg-white border border-gray-700 rounded-[4px]
+                                                 focus:outline-none focus:ring-[0.5px] focus:ring-black focus:border-black
+                                                 placeholder-gray-400 transition-all duration-150"
+                                    />
+                                  </span>
+                                )
+                              } else {
+                                return (
+                                  <span
+                                    key={index}
+                                    className="text-gray-900 leading-relaxed"
+                                    style={{ fontSize: `${textSize}px` }}
+                                    dangerouslySetInnerHTML={{ __html: part }}
+                                  />
+                                )
+                              }
+                            })
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
+               {question.q_type === "SUMMARY_DRAG" &&
+                      (() => {
+                        let optionsData: Record<string, string> = {}
+                        let choicesArray: string[] = []
+                        let headersData: string[] = ["People", "Staff Responsibilities"]
+
+                        if (question.options) {
+                          try {
+                            optionsData =
+                              typeof question.options === "string" ? JSON.parse(question.options) : question.options
+                          } catch (e) {
+                            console.error("Failed to parse SUMMARY_DRAG options:", e)
+                          }
+                        }
+
+                        if (question.choices) {
+                          try {
+                            choicesArray =
+                              typeof question.choices === "string" ? JSON.parse(question.choices) : question.choices
+                          } catch (e) {
+                            console.error("Failed to parse SUMMARY_DRAG choices:", e)
+                          }
+                        }
+
+                        if (question.rows?.headers && Array.isArray(question.rows.headers)) {
+                          headersData = question.rows.headers
+                        }
+
+                        const usedChoices = new Set<string>()
+                        if (currentAnswer && typeof currentAnswer === "object") {
+                          Object.values(currentAnswer).forEach((v) => v && usedChoices.add(v as string))
+                        }
+                        const availableChoices = choicesArray.filter((c) => !usedChoices.has(c))
+
+                        const handleDragStart = (e: React.DragEvent<HTMLDivElement>, choice: string) => {
+                          e.dataTransfer.effectAllowed = "move"
+                          e.dataTransfer.setData("text/plain", choice)
+                          setDraggedItem(choice)
+                          setDragSource("choices")
+                        }
+
+                        const handleDragStartFromGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
+                          const val = currentAnswer?.[key]
+                          if (val) {
+                            e.dataTransfer.effectAllowed = "move"
+                            e.dataTransfer.setData("text/plain", val)
+                            e.dataTransfer.setData("removeFrom", key)
+                            setDraggedItem(val)
+                            setDragSource("gap")
+                          }
+                        }
+
+                        const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.add("bg-blue-50", "border-blue-500")
+                        }
+
+                        const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
+                        }
+
+                        const handleDropOnGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
+                          const choice = e.dataTransfer.getData("text/plain")
+                          const removeFrom = e.dataTransfer.getData("removeFrom")
+                          if (choice) {
+                            const newAnswer = { ...currentAnswer, [key]: choice }
+                            if (removeFrom && removeFrom !== key) delete newAnswer[removeFrom]
+                            handleAnswerChange(question.id.toString(), newAnswer)
+                          }
+                          setDraggedItem(null)
+                          setDragSource(null)
+                        }
+
+                        const handleDropOnChoices = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
+                          const removeFrom = e.dataTransfer.getData("removeFrom")
+                          if (removeFrom) {
+                            const newAnswer = { ...currentAnswer }
+                            delete newAnswer[removeFrom]
+                            handleAnswerChange(question.id.toString(), newAnswer)
+                          }
+                          setDraggedItem(null)
+                          setDragSource(null)
+                        }
+
+                        return (
+                          <div className="space-y-5">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                              <div className="space-y-2">
+                                <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
+                                  {headersData[0]}
+                                </div>
+
+                                {Object.entries(optionsData).map(([key, text], idx) => {
+                                  const currentValue = currentAnswer?.[key]
+                                  const num = questionStartNum + idx
+                                  return (
+                                    <div key={key} className="flex items-center justify-between gap-3">
+                                      <div
+                                        className="text-gray-900 font-medium flex-1"
+                                        style={{ fontSize: `${textSize}px` }}
+                                      >
+                                        {text}
+                                      </div>
+                                      <div
+                                        className="border-2 border-dashed border-gray-400 rounded-md px-3 py-1 w-[160px] text-center cursor-pointer bg-white hover:border-[#4B61D1] transition-colors"
+                                        onDragOver={handleDragOver}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={(e) => handleDropOnGap(e, key)}
+                                      >
+                                        {currentValue ? (
                                           <div
-                                            className="text-base leading-relaxed text-gray-900 flex-1"
+                                            draggable
+                                            onDragStart={(e) => handleDragStartFromGap(e, key)}
+                                            className="cursor-move text-gray-900 font-semibold truncate"
                                             style={{ fontSize: `${textSize}px` }}
                                           >
-                                            {(() => {
-                                              const text = question.q_text || ""
-                                              const parts = text.split(/_+/)
-              
-                                              return (
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                  {parts.map((part, index) => (
-                                                    <React.Fragment key={index}>
-                                                      <span dangerouslySetInnerHTML={{ __html: part }} />
-                                                      {index < parts.length - 1 && (
-                                                        <Input
-                                                          value={currentAnswer || ""}
-                                                          onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                                                          className="inline-block w-32 px-2 py-1 text-sm bg-white border-2 border-black focus:border-black rounded"
-                                                          placeholder={questionStartNum.toString()}
-                                                        />
-                                                      )}
-                                                    </React.Fragment>
-                                                  ))}
-                                                </div>
-                                              )
-                                            })()}
+                                            {currentValue}
                                           </div>
+                                        ) : (
+                                          <span
+                                            className="text-gray-400 font-semibold"
+                                            style={{ fontSize: `${textSize}px` }}
+                                          >
+                                            {num}
+                                          </span>
                                         )}
                                       </div>
                                     </div>
-                                  )}
-              
-                                  {question.q_type === "SENTENCE_ENDINGS" && optionsArray.length > 0 && (
-                                    <div className="space-y-4">
-                                      <div className="space-y-3">
-                                        <div className="border-2 border-dashed border-blue-300 bg-blue-50 p-3 rounded-lg min-h-[40px] flex items-center">
-                                          {currentAnswer ? (
-                                            <span className="text-blue-800 font-medium">{currentAnswer}</span>
-                                          ) : (
-                                            <span className="text-gray-400 text-xs">Select an option</span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <div className="border-t pt-3">
-                                        <p className="text-xs text-gray-600 mb-2">Choices:</p>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                          {optionsArray.map((option) => (
-                                            <Button
-                                              key={option.key}
-                                              variant={currentAnswer === option.key ? "default" : "outline"}
-                                              size="sm"
-                                              onClick={() => handleAnswerChange(questionId, option.key)}
-                                              className={`text-xs p-2 h-auto text-left ${
-                                                currentAnswer === option.key
-                                                  ? "bg-blue-600 text-white"
-                                                  : "bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
-                                              }`}
-                                            >
-                                              <span className="font-medium">{option.key}</span> {option.text}
-                                            </Button>
-                                          ))}
-                                        </div>
-                                      </div>
+                                  )
+                                })}
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
+                                  {headersData[1]}
+                                </div>
+
+                                <div
+                                  className="border-2 border-dashed border-gray-300 rounded-md px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+                                  onDragOver={handleDragOver}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={handleDropOnChoices}
+                                ></div>
+
+                                <div className="space-y-2">
+                                  {availableChoices.map((choice, idx) => (
+                                    <div
+                                      key={idx}
+                                      draggable
+                                      onDragStart={(e) => handleDragStart(e, choice)}
+                                      onDragEnd={() => {
+                                        setDraggedItem(null)
+                                        setDragSource(null)
+                                      }}
+                                      className={`border border-gray-400 rounded-md px-3 py-1 text-center cursor-move transition-all hover:shadow-sm ${
+                                        draggedItem === choice ? "opacity-60 bg-gray-100" : "bg-white"
+                                      }`}
+                                    >
+                                      <span className="text-gray-900 font-medium" style={{ fontSize: `${textSize}px` }}>
+                                        {choice}
+                                      </span>
                                     </div>
+                                  ))}
+
+                                  {availableChoices.length === 0 && (
+                                    <p className="text-sm text-gray-500 text-center mt-2">All options used</p>
                                   )}
-              
-                          {question.q_type === "MATCHING_INFORMATION" && (
-                                    <div className="space-y-5">
-                                      {isFirstInGroup && questionGroup?.instruction && (
-                                        <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-3">
-                                          <div
-                                            className="text-gray-800 leading-relaxed"
-                                            style={{ fontSize: `${textSize}px` }}
-                                            dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
-                                          />
-                                        </div>
-                                      )}
-              
-                                      <div className="overflow-x-auto">
-                                        <table className="w-full border-2 border-black text-base">
-                                          <thead>
-                                            <tr className="bg-gray-100 border-b-2 border-black">
-                                              <th
-                                                className="p-2 text-left font-bold text-black border-r-2 border-black"
-                                                style={{ fontSize: `${textSize}px` }}
-                                              >
-                                                Questions {questionStartNum}–{questionEndNum}
-                                              </th>
-                                              {question.choices &&
-                                                Object.keys(question.choices).map((choiceKey) => (
-                                                  <th
-                                                    key={choiceKey}
-                                                    className="p-2 text-center font-bold text-black border-l-2 border-black w-14"
-                                                    style={{ fontSize: `${textSize * 0.95}px` }}
-                                                  >
-                                                    {choiceKey}
-                                                  </th>
-                                                ))}
-                                            </tr>
-                                          </thead>
-              
-                                          <tbody>
-                                            {question.rows?.map((rowText, index) => (
-                                              <tr key={index} className="border-b-2 border-black hover:bg-blue-50 transition">
-                                                <td className="border-r-2 border-black p-2 text-black font-semibold">
-                                                  <div className="flex items-center gap-2">
-                                                    <span className="bg-white border-2 border-[#4B61D1] text-gray-900 w-6 h-6 rounded flex items-center justify-center text-xs font-bold">
-                                                      {questionStartNum + index}
-                                                    </span>
-                                                    <span
-                                                      className="text-gray-900"
-                                                      style={{ fontSize: `${textSize * 0.95}px` }}
-                                                      dangerouslySetInnerHTML={{ __html: rowText }}
-                                                    />
-                                                  </div>
-                                                </td>
-              
-                                                {question.choices &&
-                                                  Object.keys(question.choices).map((choiceKey) => (
-                                                    <td key={choiceKey} className="border-l-2 border-black p-2 text-center">
-                                                      <input
-                                                        type="radio"
-                                                        name={`matching_${question.id}_${index}`}
-                                                        value={choiceKey}
-                                                        checked={answers[`${question.id}_matching_${index}`] === choiceKey}
-                                                        onChange={(e) =>
-                                                          handleAnswerChange(`${question.id}_matching_${index}`, e.target.value)
-                                                        }
-                                                        className="w-4 h-4 accent-[#4B61D1] cursor-pointer"
-                                                      />
-                                                    </td>
-                                                  ))}
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-              
-                                      <div className="mt-5">
-                                        <h5 className="font-bold mb-2 text-black" style={{ fontSize: `${textSize}px` }}>
-                                          {question.q_text ? (
-                                            <span dangerouslySetInnerHTML={{ __html: question.q_text }} />
-                                          ) : (
-                                            "Choices:"
-                                          )}
-                                        </h5>
-              
-                                        <div className="overflow-x-auto">
-                                          <table className="w-full border-2 border-black text-base">
-                                            <tbody>
-                                              {question.choices &&
-                                                Object.entries(question.choices).map(([key, text]) => (
-                                                  <tr key={key} className="border-b-2 border-black">
-                                                    <td
-                                                      className="border-r-2 border-black p-2 w-14 text-center font-bold bg-white text-black"
-                                                      style={{ fontSize: `${textSize * 0.95}px` }}
-                                                    >
-                                                      {key}
-                                                    </td>
-                                                    <td
-                                                      className="border-l-2 border-black p-2 text-black font-semibold"
-                                                      style={{ fontSize: `${textSize * 0.95}px` }}
-                                                    >
-                                                      <span dangerouslySetInnerHTML={{ __html: text as string }} />
-                                                    </td>
-                                                  </tr>
-                                                ))}
-                                            </tbody>
-                                          </table>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-              
-{question.q_type === "TABLE_COMPLETION" && (
-  <div className="overflow-x-auto">
-    <table className="w-full border-collapse border-2 border-black">
-      <tbody>
-        {question.rows?.map((row: any, rowIndex: number) => (
-          <tr key={rowIndex}>
-            {row.cells?.map((cell: string, cellIndex: number) => {
-              const isEmptyOrUnderscore = cell === "" || cell === "_"
-              const hasUnderscores =
-                typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
 
-              if (isEmptyOrUnderscore || hasUnderscores) {
-                const tableAnswersKey = `${questionId}_answer`
-                const tableAnswers = answers[tableAnswersKey] || {}
-                const cellKey = `${rowIndex}_${cellIndex}`
-
-                // Har bir input uchun placeholder nomerini hisoblash
-                let inputQuestionNumber = questionStartNum
-                for (let r = 0; r < rowIndex; r++) {
-                  for (let c = 0; c < question.rows[r].cells.length; c++) {
-                    const prevCell = question.rows[r].cells[c]
-                    if (
-                      prevCell === "" ||
-                      prevCell === "_" ||
-                      (typeof prevCell === "string" && /_+/.test(prevCell))
-                    ) {
-                      inputQuestionNumber++
-                    }
-                  }
-                }
-                for (let c = 0; c < cellIndex; c++) {
-                  const prevCell = row.cells[c]
-                  if (
-                    prevCell === "" ||
-                    prevCell === "_" ||
-                    (typeof prevCell === "string" && /_+/.test(prevCell))
-                  ) {
-                    inputQuestionNumber++
-                  }
-                }
-
-                return (
-                  <td key={cellIndex} className="border-2 border-black p-2">
-                    <div className="min-w-[150px]">
-                      {hasUnderscores ? (
-                        <div className="flex flex-wrap items-center gap-1">
-                          {cell.split(/(_+)/).map((part: string, partIndex: number) => {
-                            if (/_+/.test(part)) {
-                              return (
-                                <Input
-                                  key={partIndex}
-                                  value={tableAnswers[cellKey] || ""}
-                                  onChange={(e) =>
-                                    handleAnswerChange(
-                                      tableAnswersKey, // <– asosiy kalit
-                                      { ...tableAnswers, [cellKey]: e.target.value } // yangilangan qiymat
-                                    )
-                                  }
-                                  className="inline-block w-32 text-sm bg-white border-2 border-black focus:border-black text-center"
-                                  placeholder={inputQuestionNumber.toString()}
-                                />
-                              )
-                            }
-                            return part ? (
-                              <span key={partIndex} className="text-gray-900 font-bold">
-                                {part}
-                              </span>
-                            ) : null
-                          })}
+                    {![
+                      "TFNG",
+                      "TRUE_FALSE_NOT_GIVEN",
+                      "MCQ_SINGLE",
+                      "MCQ_MULTI",
+                      "SENTENCE_COMPLETION",
+                      "SENTENCE_ENDINGS",
+                      "MATCHING_INFORMATION",
+                      "TABLE_COMPLETION",
+                      "MAP_LABELING",
+                      "FLOW_CHART",
+                      "NOTE_COMPLETION",
+                      "SUMMARY_DRAG",
+                    ].includes(question.q_type || "") && (
+                      <div className="flex flex-row items-start gap-3 mb-4">
+                        <div
+                          className="text-base sm:text-lg font-semibold bg-white border-2 border-blue-500 text-gray-900 px-3 py-1 rounded flex-shrink-0"
+                          style={{ fontSize: `${textSize * 1.125}px` }}
+                        >
+                          {questionCount > 1 ? `${questionStartNum} - ${questionEndNum}` : questionStartNum}
                         </div>
-                      ) : (
-                        <Input
-                          value={tableAnswers[cellKey] || ""}
-                          onChange={(e) =>
-                            handleAnswerChange(
-                              tableAnswersKey,
-                              { ...tableAnswers, [cellKey]: e.target.value }
-                            )
-                          }
-                          className="w-full text-sm bg-white border-2 border-black focus:border-black text-center"
-                          placeholder={inputQuestionNumber.toString()}
-                        />
-                      )}
-                    </div>
-                  </td>
-                )
-              }
-
-              return (
-                <td key={cellIndex} className="border-2 border-black p-2">
-                  <span className="text-gray-900 font-bold">{cell}</span>
-                </td>
-              )
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-)}
-
-              
-                          {question.q_type === "MAP_LABELING" && question.photo && question.rows && (
-                                    <div className="space-y-4">
-                                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                        <div className="lg:col-span-2">
-                                          <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
-                                            <img
-                                              src={`${process.env.NEXT_PUBLIC_API_URL}/uploads/l_questions/${question.photo}`}
-                                              alt="Map"
-                                              className="w-full h-auto"
-                                              draggable={false}
-                                            />
-                                            {(() => {
-                                              let rowsData: Record<string, any> = {}
-                                              if (question.rows) {
-                                                if (typeof question.rows === "object") {
-                                                  rowsData = question.rows
-                                                } else if (typeof question.rows === "string") {
-                                                  try {
-                                                    rowsData = JSON.parse(question.rows)
-                                                  } catch (e) {
-                                                    console.error("[v0] Failed to parse MAP_LABELING rows for rendering:", e)
-                                                    console.error("[v0] Invalid rows data:", question.rows)
-                                                  }
-                                                }
-                                              }
-              
-                                              return Object.entries(rowsData).map(([position, coords]: [string, any], index) => {
-                                                const dropZoneQuestionId = `${question.id}_map_${position}`
-                                                const currentAnswer = answers[dropZoneQuestionId]
-                                                const questionNum = questionStartNum + index
-              
-                                                let selectedOptionText = ""
-                                                if (currentAnswer) {
-                                                  const selectedOption = optionsArray.find((opt) => opt.key === currentAnswer)
-                                                  selectedOptionText = selectedOption?.text || ""
-                                                }
-              
-                                                return (
-                                                  <div
-                                                    key={position}
-                                                    className="absolute"
-                                                    style={{
-                                                      left: coords.x,
-                                                      top: coords.y,
-                                                      transform: "translate(-50%, -50%)",
-                                                    }}
-                                                    onDragOver={(e) => {
-                                                      e.preventDefault()
-                                                      e.currentTarget.classList.add("bg-blue-200", "scale-110")
-                                                    }}
-                                                    onDragLeave={(e) => {
-                                                      e.currentTarget.classList.remove("bg-blue-200", "scale-110")
-                                                    }}
-                                                    onDrop={(e) => {
-                                                      e.preventDefault()
-                                                      e.currentTarget.classList.remove("bg-blue-200", "scale-110")
-                                                      const optionKey = e.dataTransfer.getData("text/plain")
-                                                      if (optionKey) {
-                                                        handleAnswerChange(dropZoneQuestionId, optionKey, dropZoneQuestionId)
-                                                      }
-                                                    }}
-                                                  >
-                                                    <div className="flex flex-col items-center gap-1">
-                                                      <div
-                                                        draggable={!!currentAnswer}
-                                                        onDragStart={(e) => {
-                                                          if (currentAnswer) {
-                                                            e.dataTransfer.setData("text/plain", currentAnswer)
-                                                            e.dataTransfer.setData("removeFrom", dropZoneQuestionId)
-                                                            e.currentTarget.classList.add("opacity-50")
-                                                          }
-                                                        }}
-                                                        onDragEnd={(e) => {
-                                                          e.currentTarget.classList.remove("opacity-50")
-                                                        }}
-                                                        className={`min-w-[80px] px-3 py-2 rounded-lg border-2 flex flex-col items-center justify-center text-sm font-semibold shadow-lg transition-all ${
-                                                          currentAnswer
-                                                            ? "bg-white border-gray-500 hover:bg-red-50 cursor-move"
-                                                            : "bg-white border-dashed border-gray-400 hover:border-gray-600 hover:scale-105 cursor-pointer"
-                                                        }`}
-                                                        onClick={() => {
-                                                          if (currentAnswer) {
-                                                            handleAnswerChange(dropZoneQuestionId, null, dropZoneQuestionId)
-                                                          }
-                                                        }}
-                                                        title={
-                                                          currentAnswer
-                                                            ? "Click to remove or drag back to options"
-                                                            : "Drag option here"
-                                                        }
-                                                      >
-                                                        <span className="text-gray-600 font-bold text-base">{questionNum}</span>
-                                                        {currentAnswer && selectedOptionText && (
-                                                          <span className="text-gray-700 text-xs mt-1 text-center">
-                                                            {selectedOptionText}
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                )
-                                              })
-                                            })()}
-                                          </div>
-                                        </div>
-              
-                                        <div className="lg:col-span-1">
-                                          <div
-                                            className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 sticky top-4"
-                                            onDragOver={(e) => {
-                                              e.preventDefault()
-                                              const removeFrom = e.dataTransfer.types.includes("removefrom")
-                                              if (removeFrom) {
-                                                e.currentTarget.classList.add("bg-blue-50", "border-blue-400")
-                                              }
-                                            }}
-                                            onDragLeave={(e) => {
-                                              e.currentTarget.classList.remove("bg-blue-50", "border-blue-400")
-                                            }}
-                                            onDrop={(e) => {
-                                              e.preventDefault()
-                                              e.currentTarget.classList.remove("bg-blue-50", "border-blue-400")
-                                              const removeFrom = e.dataTransfer.getData("removeFrom")
-                                              if (removeFrom) {
-                                                handleAnswerChange(removeFrom, null, removeFrom)
-                                              }
-                                            }}
-                                          >
-                                            <h4 className="font-semibold text-gray-900 mb-4" style={{ fontSize: `${textSize}px` }}>
-                                              Options
-                                            </h4>
-                                            <div className="space-y-2">
-                                              {optionsArray
-                                                .filter((option) => {
-                                                  let rowsData: Record<string, any> = {}
-                                                  if (question.rows) {
-                                                    if (typeof question.rows === "object") {
-                                                      rowsData = question.rows
-                                                    } else if (typeof question.rows === "string") {
-                                                      try {
-                                                        rowsData = JSON.parse(question.rows)
-                                                      } catch (e) {
-                                                        return true
-                                                      }
-                                                    }
-                                                  }
-              
-                                                  const isUsed = Object.keys(rowsData).some((position) => {
-                                                    const dropZoneQuestionId = `${question.id}_map_${position}`
-                                                    return answers[dropZoneQuestionId] === option.key
-                                                  })
-              
-                                                  return !isUsed
-                                                })
-                                                .map((option) => (
-                                                  <div
-                                                    key={option.key}
-                                                    draggable
-                                                    onDragStart={(e) => {
-                                                      e.dataTransfer.setData("text/plain", option.key)
-                                                      e.currentTarget.classList.add("opacity-50")
-                                                    }}
-                                                    onDragEnd={(e) => {
-                                                      e.currentTarget.classList.remove("opacity-50")
-                                                    }}
-                                                    className="bg-white border-2 border-gray-300 rounded-lg p-3 cursor-move hover:border-gray-600 hover:shadow-md transition-all"
-                                                  >
-                                                    <div className="flex items-center gap-2">
-                                                      <span className="bg-gray-700 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
-                                                        {option.key}
-                                                      </span>
-                                                      <span className="text-gray-900 font-medium text-sm">{option.text}</span>
-                                                    </div>
-                                                  </div>
-                                                ))}
-                                              {optionsArray.filter((option) => {
-                                                let rowsData: Record<string, any> = {}
-                                                if (question.rows) {
-                                                  if (typeof question.rows === "object") {
-                                                    rowsData = question.rows
-                                                  } else if (typeof question.rows === "string") {
-                                                    try {
-                                                      rowsData = JSON.parse(question.rows)
-                                                    } catch (e) {
-                                                      return true
-                                                    }
-                                                  }
-                                                }
-                                                const isUsed = Object.keys(rowsData).some((position) => {
-                                                  const dropZoneQuestionId = `${question.id}_map_${position}`
-                                                  return answers[dropZoneQuestionId] === option.key
-                                                })
-                                                return !isUsed
-                                              }).length === 0 && (
-                                                <p className="text-sm text-gray-500 text-center mt-4">All options used</p>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-              
-                            {question.q_type === "FLOW_CHART" && question.choices && (
-                                    <div className="space-y-2">
-                                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                                        <div className="lg:col-span-2">
-                                          <div className="space-y-1">
-                                            {Object.entries(question.choices).map(([stepNum, stepText]: [string, any], index) => {
-                                              const hasBlank = stepText.includes("__")
-                                              const flowChartQuestionId = question.id.toString()
-                                              const allAnswers = answers[flowChartQuestionId]
-                                              const currentAnswer =
-                                                allAnswers && typeof allAnswers === "object" && allAnswers[stepNum]
-                                                  ? allAnswers[stepNum]
-                                                  : ""
-              
-                                              const stepQuestionNum = hasBlank
-                                                ? (() => {
-                                                    const allQuestions = getAllQuestions()
-                                                    const baseQuestionIndex = allQuestions.findIndex(
-                                                      (q) => q.id.toString() === flowChartQuestionId,
-                                                    )
-                                                    let questionCounter = 1
-                                                    for (let i = 0; i < baseQuestionIndex; i++) {
-                                                      questionCounter += getQuestionCount(allQuestions[i])
-                                                    }
-                                                    let blankCounter = 0
-                                                    const sortedSteps = Object.entries(question.choices || {}).sort(
-                                                      ([a], [b]) => Number(a) - Number(b),
-                                                    )
-                                                    for (const [step, text] of sortedSteps) {
-                                                      if (typeof text === "string" && text.includes("__")) {
-                                                        if (step === stepNum) {
-                                                          return questionCounter + blankCounter
-                                                        }
-                                                        blankCounter++
-                                                      }
-                                                    }
-                                                    return questionCounter
-                                                  })()
-                                                : null
-              
-                                              return (
-                                                <React.Fragment key={stepNum}>
-                                                  <div className="border border-gray-400 rounded-md p-2 bg-white shadow-sm">
-                                                    {hasBlank ? (
-                                                      <div className="text-[15px] text-gray-900 leading-snug">
-                                                        {(() => {
-                                                          const firstBlankIndex = stepText.indexOf("__")
-                                                          if (firstBlankIndex === -1) return stepText
-                                                          const beforeBlank = stepText.substring(0, firstBlankIndex)
-                                                          const afterBlank = stepText
-                                                            .substring(firstBlankIndex + 2)
-                                                            .replace(/__/g, "")
-              
-                                                          return (
-                                                            <>
-                                                              {beforeBlank}
-                                                              <span
-                                                                draggable={!!currentAnswer}
-                                                                onDragStart={(e) => {
-                                                                  if (currentAnswer) {
-                                                                    e.dataTransfer.setData("text/plain", currentAnswer)
-                                                                    e.dataTransfer.setData("removeFrom", stepNum)
-                                                                    e.dataTransfer.setData("removeFromQuestion", flowChartQuestionId)
-                                                                    e.currentTarget.classList.add("opacity-50")
-                                                                  }
-                                                                }}
-                                                                onDragEnd={(e) => {
-                                                                  e.currentTarget.classList.remove("opacity-50")
-                                                                }}
-                                                                className={`inline-flex items-center gap-2 min-w-[120px] px-2 py-[4px] mx-[3px] border-2 border-dashed rounded-md transition-all 
-                                                                  ${
-                                                                    currentAnswer
-                                                                      ? "bg-gray-50 border-gray-500 cursor-move hover:bg-red-50 hover:border-red-500"
-                                                                      : "bg-gray-50 border-gray-400 hover:border-gray-600"
-                                                                  }`}
-                                                                onDragOver={(e) => {
-                                                                  e.preventDefault()
-                                                                  e.currentTarget.classList.add("bg-gray-100", "scale-105")
-                                                                }}
-                                                                onDragLeave={(e) => {
-                                                                  e.currentTarget.classList.remove("bg-gray-100", "scale-105")
-                                                                }}
-                                                                onDrop={(e) => {
-                                                                  e.preventDefault()
-                                                                  e.currentTarget.classList.remove("bg-gray-100", "scale-105")
-                                                                  const optionKey = e.dataTransfer.getData("text/plain")
-                                                                  if (optionKey) {
-                                                                    const fullQuestionId = `${question.id}_flow_${stepNum}`
-                                                                    handleAnswerChange(flowChartQuestionId, optionKey, fullQuestionId)
-                                                                  }
-                                                                }}
-                                                                onClick={() => {
-                                                                  if (currentAnswer) {
-                                                                    const fullQuestionId = `${question.id}_flow_${stepNum}`
-                                                                    handleAnswerChange(flowChartQuestionId, null, fullQuestionId)
-                                                                  }
-                                                                }}
-                                                              >
-                                                                <span className="bg-[#4B61D1] text-white px-2 py-[1px] rounded text-xs font-medium">
-                                                                  {stepQuestionNum}
-                                                                </span>
-                                                                {currentAnswer ? (
-                                                                  <span className="font-semibold text-gray-700 text-[14px]">
-                                                                    {currentAnswer}
-                                                                  </span>
-                                                                ) : (
-                                                                  <span className="text-gray-400 text-sm">Drop here</span>
-                                                                )}
-                                                              </span>
-                                                              {afterBlank}
-                                                            </>
-                                                          )
-                                                        })()}
-                                                      </div>
-                                                    ) : (
-                                                      <div className="text-[15px] text-gray-900 leading-snug">{stepText}</div>
-                                                    )}
-                                                  </div>
-              
-                                                  {index < Object.keys(question.choices).length - 1 && (
-                                                    <div className="flex justify-center relative h-5">
-                                                      <div className="w-0.5 h-4 bg-gray-400"></div>
-                                                      <div className="absolute bottom-0 w-0 h-0 border-l-[5px] border-r-[5px] border-t-[6px] border-l-transparent border-r-transparent border-t-gray-400"></div>
-                                                    </div>
-                                                  )}
-                                                </React.Fragment>
-                                              )
-                                            })}
-                                          </div>
-                                        </div>
-              
-                                        <div className="lg:col-span-1">
-                                          <div
-                                            className="bg-gray-50 border border-gray-300 rounded-md p-3 sticky top-4 shadow-sm"
-                                            onDragOver={(e) => e.preventDefault()}
-                                          >
-                                            <h4 className="font-semibold text-gray-900 mb-2" style={{ fontSize: `${textSize}px` }}>
-                                              Options
-                                            </h4>
-                                            <div className="space-y-1">
-                                              {question.options &&
-                                                Array.isArray(question.options) &&
-                                                question.options
-                                                  .filter((optionKey: string) => {
-                                                    const flowChartQuestionId = question.id.toString()
-                                                    const allAnswers = answers[flowChartQuestionId]
-                                                    if (!allAnswers || typeof allAnswers !== "object") return true
-                                                    const isUsed = Object.values(allAnswers).includes(optionKey)
-                                                    return !isUsed
-                                                  })
-                                                  .map((optionKey: string) => (
-                                                    <div
-                                                      key={optionKey}
-                                                      draggable
-                                                      onDragStart={(e) => {
-                                                        e.dataTransfer.setData("text/plain", optionKey)
-                                                        e.currentTarget.classList.add("opacity-50")
-                                                      }}
-                                                      onDragEnd={(e) => e.currentTarget.classList.remove("opacity-50")}
-                                                      className="bg-white border border-gray-400 rounded-md p-2 cursor-move hover:border-[#4B61D1] hover:shadow transition-all"
-                                                    >
-                                                      <div className="flex items-center justify-center">
-                                                        <span className="text-gray-900 font-medium text-sm">{optionKey}</span>
-                                                      </div>
-                                                    </div>
-                                                  ))}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-              
-                                  {question.q_type === "NOTE_COMPLETION" && question.options && (
-                                    <div className="space-y-4">
-                                      <div className="bg-white border-2 border-gray-300 rounded-lg p-5">
-                                        {(() => {
-                                          const optionsText =
-                                            typeof question.options === "string" ? question.options : JSON.stringify(question.options)
-              
-                                          const parts = optionsText.split(/(____+)/)
-                                          let currentInputIndex = 0
-              
-                                          return parts.map((part, index) => {
-                                            if (part.match(/____+/)) {
-                                              const questionNum = questionStartNum + currentInputIndex
-                                              const inputId = `${question.id}_note_${currentInputIndex}`
-                                              const currentAnswer = answers[inputId] || ""
-                                              currentInputIndex++
-              
-                                              return (
-                                                <span key={index} className="inline-flex items-center mx-[4px] align-middle">
-                                                  <input
-                                                    type="text"
-                                                    value={currentAnswer}
-                                                    onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
-                                                    placeholder={questionNum.toString()}
-                                                    className="inline-block w-[200px] px-3 py-[2px] text-center text-sm 
-                                                               bg-white border border-gray-700 rounded-[4px]
-                                                               focus:outline-none focus:ring-[0.5px] focus:ring-black focus:border-black
-                                                               placeholder-gray-400 transition-all duration-150"
-                                                  />
-                                                </span>
-                                              )
-                                            } else {
-                                              return (
-                                                <span
-                                                  key={index}
-                                                  className="text-gray-900 leading-relaxed"
-                                                  style={{ fontSize: `${textSize}px` }}
-                                                  dangerouslySetInnerHTML={{ __html: part }}
-                                                />
-                                              )
-                                            }
-                                          })
-                                        })()}
-                                      </div>
-                                    </div>
-                                  )}
-              
-                             {question.q_type === "SUMMARY_DRAG" &&
-                                    (() => {
-                                      let optionsData: Record<string, string> = {}
-                                      let choicesArray: string[] = []
-                                      let headersData: string[] = ["People", "Staff Responsibilities"]
-              
-                                      if (question.options) {
-                                        try {
-                                          optionsData =
-                                            typeof question.options === "string" ? JSON.parse(question.options) : question.options
-                                        } catch (e) {
-                                          console.error("Failed to parse SUMMARY_DRAG options:", e)
-                                        }
-                                      }
-              
-                                      if (question.choices) {
-                                        try {
-                                          choicesArray =
-                                            typeof question.choices === "string" ? JSON.parse(question.choices) : question.choices
-                                        } catch (e) {
-                                          console.error("Failed to parse SUMMARY_DRAG choices:", e)
-                                        }
-                                      }
-              
-                                      if (question.rows?.headers && Array.isArray(question.rows.headers)) {
-                                        headersData = question.rows.headers
-                                      }
-              
-                                      const usedChoices = new Set<string>()
-                                      if (currentAnswer && typeof currentAnswer === "object") {
-                                        Object.values(currentAnswer).forEach((v) => v && usedChoices.add(v as string))
-                                      }
-                                      const availableChoices = choicesArray.filter((c) => !usedChoices.has(c))
-              
-                                      const handleDragStart = (e: React.DragEvent<HTMLDivElement>, choice: string) => {
-                                        e.dataTransfer.effectAllowed = "move"
-                                        e.dataTransfer.setData("text/plain", choice)
-                                        setDraggedItem(choice)
-                                        setDragSource("choices")
-                                      }
-              
-                                      const handleDragStartFromGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
-                                        const val = currentAnswer?.[key]
-                                        if (val) {
-                                          e.dataTransfer.effectAllowed = "move"
-                                          e.dataTransfer.setData("text/plain", val)
-                                          e.dataTransfer.setData("removeFrom", key)
-                                          setDraggedItem(val)
-                                          setDragSource("gap")
-                                        }
-                                      }
-              
-                                      const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-                                        e.preventDefault()
-                                        e.currentTarget.classList.add("bg-blue-50", "border-blue-500")
-                                      }
-              
-                                      const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-                                        e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
-                                      }
-              
-                                      const handleDropOnGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
-                                        e.preventDefault()
-                                        e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
-                                        const choice = e.dataTransfer.getData("text/plain")
-                                        const removeFrom = e.dataTransfer.getData("removeFrom")
-                                        if (choice) {
-                                          const newAnswer = { ...currentAnswer, [key]: choice }
-                                          if (removeFrom && removeFrom !== key) delete newAnswer[removeFrom]
-                                          handleAnswerChange(question.id.toString(), newAnswer)
-                                        }
-                                        setDraggedItem(null)
-                                        setDragSource(null)
-                                      }
-              
-                                      const handleDropOnChoices = (e: React.DragEvent<HTMLDivElement>) => {
-                                        e.preventDefault()
-                                        e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
-                                        const removeFrom = e.dataTransfer.getData("removeFrom")
-                                        if (removeFrom) {
-                                          const newAnswer = { ...currentAnswer }
-                                          delete newAnswer[removeFrom]
-                                          handleAnswerChange(question.id.toString(), newAnswer)
-                                        }
-                                        setDraggedItem(null)
-                                        setDragSource(null)
-                                      }
-              
-                                      return (
-                                        <div className="space-y-5">
-                                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                            <div className="space-y-2">
-                                              <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
-                                                {headersData[0]}
-                                              </div>
-              
-                                              {Object.entries(optionsData).map(([key, text], idx) => {
-                                                const currentValue = currentAnswer?.[key]
-                                                const num = questionStartNum + idx
-                                                return (
-                                                  <div key={key} className="flex items-center justify-between gap-3">
-                                                    <div
-                                                      className="text-gray-900 font-medium flex-1"
-                                                      style={{ fontSize: `${textSize}px` }}
-                                                    >
-                                                      {text}
-                                                    </div>
-                                                    <div
-                                                      className="border-2 border-dashed border-gray-400 rounded-md px-3 py-1 w-[160px] text-center cursor-pointer bg-white hover:border-[#4B61D1] transition-colors"
-                                                      onDragOver={handleDragOver}
-                                                      onDragLeave={handleDragLeave}
-                                                      onDrop={(e) => handleDropOnGap(e, key)}
-                                                    >
-                                                      {currentValue ? (
-                                                        <div
-                                                          draggable
-                                                          onDragStart={(e) => handleDragStartFromGap(e, key)}
-                                                          className="cursor-move text-gray-900 font-semibold truncate"
-                                                          style={{ fontSize: `${textSize}px` }}
-                                                        >
-                                                          {currentValue}
-                                                        </div>
-                                                      ) : (
-                                                        <span
-                                                          className="text-gray-400 font-semibold"
-                                                          style={{ fontSize: `${textSize}px` }}
-                                                        >
-                                                          {num}
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  </div>
-                                                )
-                                              })}
-                                            </div>
-              
-                                            <div className="space-y-2">
-                                              <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
-                                                {headersData[1]}
-                                              </div>
-              
-                                              <div
-                                                className="border-2 border-dashed border-gray-300 rounded-md px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
-                                                onDragOver={handleDragOver}
-                                                onDragLeave={handleDragLeave}
-                                                onDrop={handleDropOnChoices}
-                                              ></div>
-              
-                                              <div className="space-y-2">
-                                                {availableChoices.map((choice, idx) => (
-                                                  <div
-                                                    key={idx}
-                                                    draggable
-                                                    onDragStart={(e) => handleDragStart(e, choice)}
-                                                    onDragEnd={() => {
-                                                      setDraggedItem(null)
-                                                      setDragSource(null)
-                                                    }}
-                                                    className={`border border-gray-400 rounded-md px-3 py-1 text-center cursor-move transition-all hover:shadow-sm ${
-                                                      draggedItem === choice ? "opacity-60 bg-gray-100" : "bg-white"
-                                                    }`}
-                                                  >
-                                                    <span className="text-gray-900 font-medium" style={{ fontSize: `${textSize}px` }}>
-                                                      {choice}
-                                                    </span>
-                                                  </div>
-                                                ))}
-              
-                                                {availableChoices.length === 0 && (
-                                                  <p className="text-sm text-gray-500 text-center mt-2">All options used</p>
-                                                )}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      )
-                                    })()}
-
+                        {question.q_text && (
+                          <div
+                            className="text-gray-700 flex-1"
+                            style={{ fontSize: `${textSize}px` }}
+                            dangerouslySetInnerHTML={{ __html: question.q_text }}
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })
