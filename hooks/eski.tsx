@@ -1,17 +1,19 @@
 "use client"
 
-import React from "react"
-
 import { useEffect, useState, useRef, type ReactElement } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { markSectionCompleted, areAllSectionsCompleted } from "../../../../../lib/test-strotage"
 import { Volume2, VolumeX, Wifi, Bell, Menu, X } from "lucide-react"
 import { useCustomAlert } from "@/components/custom-allert"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Slider } from "@/components/ui/slider"
 import { CompletionModal } from "@/components/completion-modal"
+import React from "react"
+import { Input } from "@/components/ui/input"
+
+// Import the missing function
+import { getStoredUserId } from "../../../../../lib/auth"
 
 interface LQuestion {
   id: number
@@ -87,20 +89,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
   const [draggedItem, setDraggedItem] = useState<string | null>(null)
   const [dragSource, setDragSource] = useState<string | null>(null)
 
-  const getUserId = () => {
-    try {
-      const userData = localStorage.getItem("user")
-      if (userData) {
-        const user = JSON.parse(userData)
-        return user.user.id ? String(user.user.id) : "null"
-      }
-    } catch (error) {
-      console.error("[v0] Error parsing user data from localStorage:", error)
-    }
-    return "1"
-  }
-
-  const [userId, setUserId] = useState<string>("null")
+  const [userId, setUserId] = useState<string>("")
 
   const { showAlert, AlertComponent } = useCustomAlert()
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -109,7 +98,22 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
 
   useEffect(() => {
-    setUserId(getUserId())
+    const id = getStoredUserId()
+    if (id) {
+      setUserId(id)
+    } else {
+      console.error("[v0] No user ID found in localStorage")
+      showAlert({
+        title: "Xatolik",
+        description: "Foydalanuvchi ma'lumotlari topilmadi. Iltimos, qaytadan kiring.",
+        type: "error",
+        confirmText: "OK",
+        showCancel: false,
+        onConfirm: () => {
+          router.push("/join")
+        },
+      })
+    }
     fetchTestData()
   }, [examId])
 
@@ -427,6 +431,16 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     return question?.q_type || "UNKNOWN"
   }
 
+  const getExamIdForAnswers = (): string => {
+    const storedExamId = localStorage.getItem("current_exam_id")
+    if (storedExamId) {
+      console.log("[v0] Using exam ID from localStorage:", storedExamId)
+      return storedExamId
+    }
+    console.log("[v0] Falling back to URL param exam ID:", examId)
+    return examId
+  }
+
   const handleAnswerChange = (questionId: string, answer: any, questionIdentifier?: string) => {
     const questionIdStr = questionId.toString()
     const questionType = getQuestionType(questionIdStr)
@@ -457,7 +471,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     }
     setAnswers(newAnswers)
 
-    const answersKey = `listening_answers_${examId}_${userId}`
+    const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
     let answersArray = JSON.parse(localStorage.getItem(answersKey) || "[]")
 
     const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr.split("_")[0])
@@ -505,7 +519,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         answersArray.push({
           userId: String(userId),
           questionId: tfngQuestion.listening_questions_id,
-          examId: Number.parseInt(examId),
+          examId: Number.parseInt(getExamIdForAnswers()),
           question_type: actualQuestionType,
           answer: tfngAnswers,
           l_questionsID: l_questionsID,
@@ -537,7 +551,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         answersArray.push({
           userId: String(userId),
           questionId: mapQuestion.listening_questions_id,
-          examId: Number.parseInt(examId),
+          examId: Number.parseInt(getExamIdForAnswers()),
           question_type: actualQuestionType,
           answer: `${position}:${selectedOptionKey}`,
           l_questionsID: actualLQuestionId,
@@ -593,7 +607,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         answersArray.push({
           userId: String(userId),
           questionId: tableQuestion.listening_questions_id,
-          examId: Number.parseInt(examId),
+          examId: Number.parseInt(getExamIdForAnswers()),
           question_type: actualQuestionType,
           answer: { [cellKey]: answer },
           l_questionsID: uniqueLQuestionsID,
@@ -633,7 +647,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         answersArray.push({
           userId: String(userId),
           questionId: l_questionsID,
-          examId: Number.parseInt(examId),
+          examId: Number.parseInt(getExamIdForAnswers()),
           question_type: actualQuestionType,
           answer: answer,
           l_questionsID: uniqueLQuestionsID,
@@ -648,7 +662,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           answersArray.push({
             userId: String(userId),
             questionId: l_questionsID,
-            examId: Number.parseInt(examId),
+            examId: Number.parseInt(getExamIdForAnswers()),
             question_type: actualQuestionType,
             answer: selectedOption,
             l_questionsID: Number.parseInt(questionIdStr) + index,
@@ -669,7 +683,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         answersArray.push({
           userId: String(userId),
           questionId: l_questionsID,
-          examId: Number.parseInt(examId),
+          examId: Number.parseInt(getExamIdForAnswers()),
           question_type: actualQuestionType,
           answer: `${stepNum}:${answer}`,
           l_questionsID: l_questionsID,
@@ -699,7 +713,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         answersArray.push({
           userId: String(userId),
           questionId: l_questionsID,
-          examId: Number.parseInt(examId),
+          examId: Number.parseInt(getExamIdForAnswers()),
           question_type: actualQuestionType,
           answer: { [(inputIndex + 1).toString()]: answer },
           l_questionsID: actualQuestionNumber,
@@ -728,7 +742,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           filteredAnswers.push({
             userId: String(userId),
             questionId: question?.listening_questions_id,
-            examId: Number.parseInt(examId),
+            examId: Number.parseInt(getExamIdForAnswers()),
             question_type: actualQuestionType,
             answer: { [key]: value },
             l_questionsID: question?.id,
@@ -747,7 +761,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         answersArray.push({
           userId: String(userId),
           questionId: l_questionsID,
-          examId: Number.parseInt(examId),
+          examId: Number.parseInt(getExamIdForAnswers()),
           question_type: actualQuestionType,
           answer: formattedAnswer,
           l_questionsID: Number.parseInt(questionIdStr),
@@ -786,7 +800,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
               answersArray.push({
                 userId: String(userId),
                 questionId: tfngQuestion.listening_questions_id,
-                examId: Number.parseInt(examId),
+                examId: Number.parseInt(getExamIdForAnswers()),
                 question_type: actualQuestionType,
                 answer: tfngAnswers,
                 l_questionsID: l_questionsID,
@@ -815,6 +829,8 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         const tableQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
 
         if (tableQuestion) {
+          const cellKey = `${rowIndex}_${cellIndex}`
+
           const allQuestions = getAllQuestions()
           const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
 
@@ -846,51 +862,44 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           }
 
           const uniqueLQuestionsID = questionCounter + cellOffset
+
           answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
         }
-
-        const tableAnswersKey = `${baseQuestionId}_answer`
-        const currentTableAnswers = answers[tableAnswersKey] || {}
-        const cellKey = `${rowIndex}_${cellIndex}`
-        const updatedTableAnswers = { ...currentTableAnswers }
-        delete updatedTableAnswers[cellKey]
-
-        setAnswers((prev) => ({
-          ...prev,
-          [tableAnswersKey]: Object.keys(updatedTableAnswers).length > 0 ? updatedTableAnswers : null,
-        }))
       } else if (questionIdStr.includes("_matching_")) {
         const parts = questionIdStr.split("_")
         const baseQuestionId = parts[0]
         const rowIndex = Number.parseInt(parts[2])
 
         const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        const l_questionsID = question?.listening_questions_id
 
-        if (question) {
-          const allQuestions = getAllQuestions()
-          const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
+        const allQuestions = getAllQuestions()
+        const baseQuestionIndex = allQuestions.findIndex((q) => q.id.toString() === baseQuestionId)
 
-          let questionCounter = 1
-          for (let i = 0; i < baseQuestionIndex; i++) {
-            questionCounter += getQuestionCount(allQuestions[i])
-          }
-
-          const uniqueLQuestionsID = questionCounter + rowIndex
-          answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
+        let questionCounter = 1
+        for (let i = 0; i < baseQuestionIndex; i++) {
+          questionCounter += getQuestionCount(allQuestions[i])
         }
+
+        const uniqueLQuestionsID = questionCounter + rowIndex
+
+        answersArray = answersArray.filter((item: any) => item.l_questionsID !== uniqueLQuestionsID)
+      } else if (actualQuestionType === "MCQ_MULTI" && Array.isArray(answer)) {
+        const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
+        const l_questionsID = question?.listening_questions_id
+
+        answersArray = answersArray.filter((item: any) => item.questionId !== l_questionsID)
       } else if (actualQuestionType === "FLOW_CHART" && questionIdentifier && questionIdentifier.includes("_flow_")) {
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
         const stepNum = parts[2]
 
-        const flowQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        const l_questionsID = question?.listening_questions_id
 
-        if (flowQuestion) {
-          const l_questionsID = flowQuestion.listening_questions_id
-          answersArray = answersArray.filter(
-            (item: any) => !(item.questionId === l_questionsID && item.answer?.startsWith(`${stepNum}:`)),
-          )
-        }
+        answersArray = answersArray.filter(
+          (item: any) => !(item.questionId === l_questionsID && item.answer?.startsWith(`${stepNum}:`)),
+        )
       } else if (
         actualQuestionType === "NOTE_COMPLETION" &&
         questionIdentifier &&
@@ -901,49 +910,42 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         const inputIndex = Number.parseInt(parts[2])
 
         const question = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        const l_questionsID = question?.listening_questions_id
 
-        if (question) {
-          const allQuestions = getAllQuestions()
-          const baseQuestionIndex = allQuestions.findIndex((q) => q.id === question.id)
-          let questionCounter = 1
-          for (let i = 0; i < baseQuestionIndex; i++) {
-            questionCounter += getQuestionCount(allQuestions[i])
-          }
-
-          const actualQuestionNumber = questionCounter + inputIndex
-          answersArray = answersArray.filter((item: any) => item.l_questionsID !== actualQuestionNumber)
+        const allQuestions = getAllQuestions()
+        const baseQuestionIndex = allQuestions.findIndex((q) => q.id === question.id)
+        let questionCounter = 1
+        for (let i = 0; i < baseQuestionIndex; i++) {
+          questionCounter += getQuestionCount(allQuestions[i])
         }
+        const actualQuestionNumber = questionCounter + inputIndex
+
+        answersArray = answersArray.filter((item: any) => item.l_questionsID !== actualQuestionNumber)
       } else if (actualQuestionType === "SUMMARY_DRAG") {
         const summaryAnswersKey = `${questionIdStr}_summary_answers`
         const existingSummaryAnswers = answers[summaryAnswersKey] || {}
 
-        if (answer && typeof answer === "object" && answer.hasOwnProperty("wordIdToRemove")) {
-          const { wordIdToRemove } = answer
-          const newSummaryAnswers = { ...existingSummaryAnswers }
-          delete newSummaryAnswers[wordIdToRemove]
-
-          setAnswers((prev) => ({
-            ...prev,
-            [summaryAnswersKey]: Object.keys(newSummaryAnswers).length > 0 ? newSummaryAnswers : null,
-          }))
-
-          const existingLocalStorageAnswers = JSON.parse(localStorage.getItem(answersKey) || "[]")
-          const currentQuestionInLocalStorage = existingLocalStorageAnswers.find(
-            (item: any) => item.l_questionsID === question?.id && item.question_type === "SUMMARY_DRAG",
-          )
-
-          if (currentQuestionInLocalStorage) {
-            currentQuestionInLocalStorage.answer = Object.keys(newSummaryAnswers).length > 0 ? newSummaryAnswers : null
-          }
-          answersArray = existingLocalStorageAnswers
+        const newSummaryAnswers = {
+          ...existingSummaryAnswers,
+          ...answer,
         }
-      } else if (actualQuestionType === "MCQ_MULTI") {
-        const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
-        const l_questionsID = question?.listening_questions_id
-        answersArray = answersArray.filter((item: any) => item.questionId !== l_questionsID)
+
+        setAnswers((prev) => ({
+          ...prev,
+          [summaryAnswersKey]: newSummaryAnswers,
+        }))
+
+        const existingLocalStorageAnswers = JSON.parse(localStorage.getItem(answersKey) || "[]")
+
+        const filteredAnswers = existingLocalStorageAnswers.filter(
+          (item: any) => !(item.l_questionsID === question?.id && item.question_type === "SUMMARY_DRAG"),
+        )
+
+        answersArray = filteredAnswers
       } else {
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
         const l_questionsID = question?.listening_questions_id
+
         answersArray = answersArray.filter(
           (item: any) => !(item.questionId === l_questionsID && item.l_questionsID === Number.parseInt(questionIdStr)),
         )
@@ -977,7 +979,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     try {
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
-      const answersKey = `listening_answers_${examId}_${userId}`
+      const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
       const savedAnswers = localStorage.getItem(answersKey)
 
       if (!savedAnswers) {
@@ -997,7 +999,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
       console.log("[v0] Submitting answers:", answersArray)
 
       for (const answerData of answersArray) {
-        const response = await fetch(`${API_BASE_URL}/listening_answers`, {
+        const response = await fetch(`${API_BASE_URL}/listening-answers`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(answerData),
@@ -1268,11 +1270,26 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     const parts = [1, 2, 3, 4]
     return parts.map((partNum) => {
       const questions = getQuestionsByPart(partNum)
+
+      // Calculate total questions by summing up question counts (including sub-questions)
+      const totalQuestions = questions.reduce((sum, q) => sum + getQuestionCount(q), 0)
+
+      // Calculate answered questions by counting answered sub-questions
+      let answeredCount = 0
+      questions.forEach((q) => {
+        const questionCount = getQuestionCount(q)
+        for (let i = 0; i < questionCount; i++) {
+          if (isSubQuestionAnswered(q, i)) {
+            answeredCount++
+          }
+        }
+      })
+
       return {
         partNumber: partNum,
         questions: questions,
-        totalQuestions: questions.length,
-        answeredQuestions: questions.filter((q) => isQuestionAnswered(q)).length,
+        totalQuestions: totalQuestions,
+        answeredQuestions: answeredCount,
       }
     })
   }
@@ -1455,7 +1472,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const answersKey = `listening_answers_${examId}_${userId}`
+      const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
       const savedAnswers = localStorage.getItem(answersKey)
 
       if (savedAnswers) {
@@ -1478,7 +1495,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
   const saveToLocalStorage = (questionIdentifier: string, answer: any, questionType: string) => {
     if (typeof window === "undefined") return
 
-    const answersKey = `listening_answers_${examId}_${userId}`
+    const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
     const answersData = localStorage.getItem(answersKey)
     let answersObject: Record<string, any> = {}
 
@@ -1502,7 +1519,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
   const clearAnswer = (questionIdentifier: string, questionType: string) => {
     if (typeof window === "undefined") return
 
-    const answersKey = `listening_answers_${examId}_${userId}`
+    const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
     const answersData = localStorage.getItem(answersKey)
     let answersObject: Record<string, any> = {}
 
@@ -2131,13 +2148,16 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         {question.q_text && (
                           <div className="mb-[6px] text-[15px] font-semibold text-gray-900 flex items-center gap-2">
                             <span className="border-2 border-blue-500 text-gray-900 bg-white px-[6px] py-[1px] rounded-[4px]">
-                              {questionStartNum}–{questionStartNum + optionsArray.length - 1}
+                              {questionStartNum}–
+                              {questionStartNum +
+                                (Array.isArray(question.correct_answers) ? question.correct_answers.length : 1) -
+                                1}
                             </span>
 
-                            <span
+                            {/* <span
                               className="text-[15px] text-gray-900 font-semibold"
                               dangerouslySetInnerHTML={{ __html: question.q_text }}
-                            />
+                            /> */}
                           </div>
                         )}
 
@@ -2231,7 +2251,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
 
-                    {question.q_type === "SENTENCE_ENDINGS" && optionsArray.length > 0 && (
+                    {/* {question.q_type === "SENTENCE_ENDINGS" && optionsArray.length > 0 && (
                       <div className="space-y-4">
                         <div className="space-y-3">
                           <div className="border-2 border-dashed border-blue-300 bg-blue-50 p-3 rounded-lg min-h-[40px] flex items-center">
@@ -2251,11 +2271,10 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 variant={currentAnswer === option.key ? "default" : "outline"}
                                 size="sm"
                                 onClick={() => handleAnswerChange(questionId, option.key)}
-                                className={`text-xs p-2 h-auto text-left ${
-                                  currentAnswer === option.key
+                                className={`text-xs p-2 h-auto text-left ${currentAnswer === option.key
                                     ? "bg-blue-600 text-white"
                                     : "bg-white text-gray-900 border-gray-300 hover:bg-gray-50"
-                                }`}
+                                  }`}
                               >
                                 <span className="font-medium">{option.key}</span> {option.text}
                               </Button>
@@ -2263,9 +2282,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                           </div>
                         </div>
                       </div>
-                    )}
+                    )} */}
 
-            {question.q_type === "MATCHING_INFORMATION" && (
+                    {question.q_type === "MATCHING_INFORMATION" && (
                       <div className="space-y-5">
                         {isFirstInGroup && questionGroup?.instruction && (
                           <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-3">
@@ -2373,39 +2392,27 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
 
-            {question.q_type === "TABLE_COMPLETION" && (
+                    {question.q_type === "TABLE_COMPLETION" && (
                       <div className="overflow-x-auto">
                         <table className="w-full border-collapse border-2 border-black">
                           <tbody>
-                            {question.rows?.map((row: any, rowIndex: number) => {
-                              const cellInputCounter = 0
-                              return (
-                                <tr key={rowIndex}>
-                                  {row.cells?.map((cell: string, cellIndex: number) => {
-                                    const isEmptyOrUnderscore = cell === "" || cell === "_"
-                                    const hasUnderscores =
-                                      typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+                            {question.rows?.map((row: any, rowIndex: number) => (
+                              <tr key={rowIndex}>
+                                {row.cells?.map((cell: string, cellIndex: number) => {
+                                  const isEmptyOrUnderscore = cell === "" || cell === "_"
+                                  const hasUnderscores =
+                                    typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
 
-                                    if (isEmptyOrUnderscore || hasUnderscores) {
-                                      const tableAnswersKey = `${questionId}_answer`
-                                      const tableAnswers = answers[tableAnswersKey] || {}
-                                      const cellKey = `${rowIndex}_${cellIndex}`
+                                  if (isEmptyOrUnderscore || hasUnderscores) {
+                                    const tableAnswersKey = `${questionId}_answer`
+                                    const tableAnswers = answers[tableAnswersKey] || {}
+                                    const cellKey = `${rowIndex}_${cellIndex}`
 
-                                      let inputQuestionNumber = questionStartNum
-                                      for (let r = 0; r < rowIndex; r++) {
-                                        for (let c = 0; c < row.cells.length; c++) {
-                                          const prevCell = question.rows[r].cells[c]
-                                          if (
-                                            prevCell === "" ||
-                                            prevCell === "_" ||
-                                            (typeof prevCell === "string" && /_+/.test(prevCell))
-                                          ) {
-                                            inputQuestionNumber++
-                                          }
-                                        }
-                                      }
-                                      for (let c = 0; c < cellIndex; c++) {
-                                        const prevCell = row.cells[c]
+                                    // Har bir input uchun placeholder nomerini hisoblash
+                                    let inputQuestionNumber = questionStartNum
+                                    for (let r = 0; r < rowIndex; r++) {
+                                      for (let c = 0; c < question.rows[r].cells.length; c++) {
+                                        const prevCell = question.rows[r].cells[c]
                                         if (
                                           prevCell === "" ||
                                           prevCell === "_" ||
@@ -2414,69 +2421,79 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                           inputQuestionNumber++
                                         }
                                       }
-
-                                      return (
-                                        <td key={cellIndex} className="border-2 border-black p-2">
-                                          <div className="min-w-[150px]">
-                                            {hasUnderscores ? (
-                                              <div className="flex flex-wrap items-center gap-1">
-                                                {cell.split(/(_+)/).map((part: string, partIndex: number) => {
-                                                  if (/_+/.test(part)) {
-                                                    return (
-                                                      <Input
-                                                        key={partIndex}
-                                                        value={tableAnswers[cellKey] || ""}
-                                                        onChange={(e) =>
-                                                          handleAnswerChange(
-                                                            `${questionId}_table_${rowIndex}_${cellIndex}`,
-                                                            e.target.value,
-                                                          )
-                                                        }
-                                                        className="inline-block w-32 text-sm bg-white border-2 border-black focus:border-black text-center"
-                                                        placeholder={inputQuestionNumber.toString()}
-                                                      />
-                                                    )
-                                                  }
-                                                  return part ? (
-                                                    <span key={partIndex} className="text-gray-900 font-bold">
-                                                      {part}
-                                                    </span>
-                                                  ) : null
-                                                })}
-                                              </div>
-                                            ) : (
-                                              <Input
-                                                value={tableAnswers[cellKey] || ""}
-                                                onChange={(e) =>
-                                                  handleAnswerChange(
-                                                    `${questionId}_table_${rowIndex}_${cellIndex}`,
-                                                    e.target.value,
-                                                  )
-                                                }
-                                                className="w-full text-sm bg-white border-2 border-black focus:border-black text-center"
-                                                placeholder={inputQuestionNumber.toString()}
-                                              />
-                                            )}
-                                          </div>
-                                        </td>
-                                      )
+                                    }
+                                    for (let c = 0; c < cellIndex; c++) {
+                                      const prevCell = row.cells[c]
+                                      if (
+                                        prevCell === "" ||
+                                        prevCell === "_" ||
+                                        (typeof prevCell === "string" && /_+/.test(prevCell))
+                                      ) {
+                                        inputQuestionNumber++
+                                      }
                                     }
 
                                     return (
                                       <td key={cellIndex} className="border-2 border-black p-2">
-                                        <span className="text-gray-900 font-bold">{cell}</span>
+                                        <div className="min-w-[150px]">
+                                          {hasUnderscores ? (
+                                            <div className="flex flex-wrap items-center gap-1">
+                                              {cell.split(/(_+)/).map((part: string, partIndex: number) => {
+                                                if (/_+/.test(part)) {
+                                                  return (
+                                                    <Input
+                                                      key={partIndex}
+                                                      value={tableAnswers[cellKey] || ""}
+                                                      onChange={(e) =>
+                                                        handleAnswerChange(
+                                                          tableAnswersKey, // <– asosiy kalit
+                                                          { ...tableAnswers, [cellKey]: e.target.value }, // yangilangan qiymat
+                                                        )
+                                                      }
+                                                      className="inline-block w-32 text-sm bg-white border-2 border-black focus:border-black text-center"
+                                                      placeholder={inputQuestionNumber.toString()}
+                                                    />
+                                                  )
+                                                }
+                                                return part ? (
+                                                  <span key={partIndex} className="text-gray-900 font-bold">
+                                                    {part}
+                                                  </span>
+                                                ) : null
+                                              })}
+                                            </div>
+                                          ) : (
+                                            <Input
+                                              value={tableAnswers[cellKey] || ""}
+                                              onChange={(e) =>
+                                                handleAnswerChange(tableAnswersKey, {
+                                                  ...tableAnswers,
+                                                  [cellKey]: e.target.value,
+                                                })
+                                              }
+                                              className="w-full text-sm bg-white border-2 border-black focus:border-black text-center"
+                                              placeholder={inputQuestionNumber.toString()}
+                                            />
+                                          )}
+                                        </div>
                                       </td>
                                     )
-                                  })}
-                                </tr>
-                              )
-                            })}
+                                  }
+
+                                  return (
+                                    <td key={cellIndex} className="border-2 border-black p-2">
+                                      <span className="text-gray-900 font-bold">{cell}</span>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       </div>
                     )}
 
-            {question.q_type === "MAP_LABELING" && question.photo && question.rows && (
+          {question.q_type === "MAP_LABELING" && question.photo && question.rows && (
                       <div className="space-y-4">
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                           <div className="lg:col-span-2">
@@ -2679,7 +2696,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
 
-              {question.q_type === "FLOW_CHART" && question.choices && (
+                    {question.q_type === "FLOW_CHART" && question.choices && (
                       <div className="space-y-2">
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                           <div className="lg:col-span-2">
@@ -2749,11 +2766,11 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                                     e.currentTarget.classList.remove("opacity-50")
                                                   }}
                                                   className={`inline-flex items-center gap-2 min-w-[120px] px-2 py-[4px] mx-[3px] border-2 border-dashed rounded-md transition-all 
-                                                    ${
-                                                      currentAnswer
-                                                        ? "bg-gray-50 border-gray-500 cursor-move hover:bg-red-50 hover:border-red-500"
-                                                        : "bg-gray-50 border-gray-400 hover:border-gray-600"
-                                                    }`}
+                                                                  ${
+                                                                    currentAnswer
+                                                                      ? "bg-gray-50 border-gray-500 cursor-move hover:bg-red-50 hover:border-red-500"
+                                                                      : "bg-gray-50 border-gray-400 hover:border-gray-600"
+                                                                  }`}
                                                   onDragOver={(e) => {
                                                     e.preventDefault()
                                                     e.currentTarget.classList.add("bg-gray-100", "scale-105")
@@ -2838,7 +2855,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                           e.currentTarget.classList.add("opacity-50")
                                         }}
                                         onDragEnd={(e) => e.currentTarget.classList.remove("opacity-50")}
-                                        className="bg-white border border-gray-400 rounded-md p-2 cursor-move hover:border-[#4B61D1] hover:shadow transition-all"
+                                        className="bg-white border border-gray-400 rounded-md px-3 py-1 cursor-move transition-all hover:border-[#4B61D1] hover:shadow"
                                       >
                                         <div className="flex items-center justify-center">
                                           <span className="text-gray-900 font-medium text-sm">{optionKey}</span>
@@ -2853,53 +2870,83 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                     )}
 
                     {question.q_type === "NOTE_COMPLETION" && question.options && (
-                      <div className="space-y-4">
-                        <div className="bg-white border-2 border-gray-300 rounded-lg p-5">
+                      <div className="space-y-0">
+                        {" "}
+                        {/* ↑ har bir band orasida vertikal joy */}
+                        <div className="bg-white0 rounded-lg p-2 leading-[2.4]">
+                          {" "}
+                          {/* ↑ line-height kengroq */}
                           {(() => {
                             const optionsText =
                               typeof question.options === "string" ? question.options : JSON.stringify(question.options)
 
-                            const parts = optionsText.split(/(____+)/)
+                            // h1'larni ajratamiz, ular alohida qatorda chiqadi
+                            const parts = optionsText.split(/(<h1>.*?<\/h1>)/g)
                             let currentInputIndex = 0
 
                             return parts.map((part, index) => {
-                              if (part.match(/____+/)) {
-                                const questionNum = questionStartNum + currentInputIndex
-                                const inputId = `${question.id}_note_${currentInputIndex}`
-                                const currentAnswer = answers[inputId] || ""
-                                currentInputIndex++
-
+                              // Agar h1 bo‘lsa — markazda chiqaramiz
+                              if (/<h1>.*?<\/h1>/.test(part)) {
+                                const headingText = part.replace(/<\/?h1>/g, "").trim()
                                 return (
-                                  <span key={index} className="inline-flex items-center mx-[4px] align-middle">
-                                    <input
-                                      type="text"
-                                      value={currentAnswer}
-                                      onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
-                                      placeholder={questionNum.toString()}
-                                      className="inline-block w-[200px] px-3 py-[2px] text-center text-sm 
-                                                 bg-white border border-gray-700 rounded-[4px]
-                                                 focus:outline-none focus:ring-[0.5px] focus:ring-black focus:border-black
-                                                 placeholder-gray-400 transition-all duration-150"
-                                    />
-                                  </span>
-                                )
-                              } else {
-                                return (
-                                  <span
-                                    key={index}
-                                    className="text-gray-900 leading-relaxed"
-                                    style={{ fontSize: `${textSize}px` }}
-                                    dangerouslySetInnerHTML={{ __html: part }}
-                                  />
+                                  <div key={index} className="text-center my-8 font-bold text-[22px] text-[#121545]">
+                                    {headingText}
+                                  </div>
                                 )
                               }
+
+                              // Oddiy text va inputlarni qayta ishlaymiz
+                              const textParts = part.split(/(____+)/)
+
+                              return (
+                                <div
+                                  key={index}
+                                  className="my-3" // har bir satr uchun tepa-past bo‘shliq
+                                >
+                                  {textParts.map((subPart, subIndex) => {
+                                    if (subPart.match(/____+/)) {
+                                      const questionNum = questionStartNum + currentInputIndex
+                                      const inputId = `${question.id}_note_${currentInputIndex}`
+                                      const currentAnswer = answers[inputId] || ""
+                                      currentInputIndex++
+
+                                      return (
+                                        <span
+                                          key={`${index}_${subIndex}`}
+                                          className="inline-flex items-center mx-[4px] align-middle"
+                                        >
+                                          <Input
+                                            type="text"
+                                            value={currentAnswer}
+                                            onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
+                                            placeholder={questionNum.toString()}
+                                            className="inline-block w-[160px] px-3 py-[3px] text-center text-sm 
+                                   bg-white border border-gray-700 rounded-[4px]
+                                   focus:outline-none focus:ring-[0.5px] focus:ring-black focus:border-black
+                                   placeholder-gray-400 transition-all duration-150"
+                                          />
+                                        </span>
+                                      )
+                                    } else {
+                                      return (
+                                        <span
+                                          key={`${index}_${subIndex}`}
+                                          className="text-gray-900 leading-relaxed"
+                                          style={{ fontSize: `${textSize}px` }}
+                                          dangerouslySetInnerHTML={{ __html: subPart }}
+                                        />
+                                      )
+                                    }
+                                  })}
+                                </div>
+                              )
                             })
                           })()}
                         </div>
                       </div>
                     )}
 
-               {question.q_type === "SUMMARY_DRAG" &&
+                    {question.q_type === "SUMMARY_DRAG" &&
                       (() => {
                         let optionsData: Record<string, string> = {}
                         let choicesArray: string[] = []
@@ -3076,37 +3123,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                           </div>
                         )
                       })()}
-
-                    {![
-                      "TFNG",
-                      "TRUE_FALSE_NOT_GIVEN",
-                      "MCQ_SINGLE",
-                      "MCQ_MULTI",
-                      "SENTENCE_COMPLETION",
-                      "SENTENCE_ENDINGS",
-                      "MATCHING_INFORMATION",
-                      "TABLE_COMPLETION",
-                      "MAP_LABELING",
-                      "FLOW_CHART",
-                      "NOTE_COMPLETION",
-                      "SUMMARY_DRAG",
-                    ].includes(question.q_type || "") && (
-                      <div className="flex flex-row items-start gap-3 mb-4">
-                        <div
-                          className="text-base sm:text-lg font-semibold bg-white border-2 border-blue-500 text-gray-900 px-3 py-1 rounded flex-shrink-0"
-                          style={{ fontSize: `${textSize * 1.125}px` }}
-                        >
-                          {questionCount > 1 ? `${questionStartNum} - ${questionEndNum}` : questionStartNum}
-                        </div>
-                        {question.q_text && (
-                          <div
-                            className="text-gray-700 flex-1"
-                            style={{ fontSize: `${textSize}px` }}
-                            dangerouslySetInnerHTML={{ __html: question.q_text }}
-                          />
-                        )}
-                      </div>
-                    )}
                   </div>
                 )
               })
@@ -3141,12 +3157,13 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         {(() => {
                           const questionButtons: ReactElement[] = []
                           const partQuestions = getQuestionsByPart(part.partNumber)
+                          const range = getPartQuestionRange(part.partNumber)
                           const baseNumber = range.start
 
-                          partQuestions.forEach((question, indexInPart) => {
+                          let currentQuestionNum = baseNumber
+                          partQuestions.forEach((question) => {
                             const questionCount = getQuestionCount(question)
                             for (let i = 0; i < questionCount; i++) {
-                              const questionNum = baseNumber + indexInPart + i
                               const isAnswered = isSubQuestionAnswered(question, i)
 
                               questionButtons.push(
@@ -3162,7 +3179,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                     }
                                     const allQuestionsForIndex = getAllQuestions()
                                     const clickedQuestionIndex = allQuestionsForIndex.findIndex(
-                                      (q, idx) => q.id === question.id && idx === indexInPart,
+                                      (q) => q.id === question.id,
                                     )
                                     if (clickedQuestionIndex !== -1) {
                                       setCurrentQuestionIndex(clickedQuestionIndex)
@@ -3171,15 +3188,16 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                   className={`w-10 h-10 text-lg font-semibold rounded-md transition-all flex-shrink-0 flex items-center justify-center ${
                                     isAnswered
                                       ? "bg-green-500 text-white hover:bg-green-600"
-                                      : questionNum === currentQuestionIndex + 1
+                                      : currentQuestionNum === currentQuestionIndex + 1
                                         ? "bg-blue-500 text-white"
                                         : "bg-gray-300 text-gray-800 hover:bg-gray-400"
                                   }`}
-                                  title={`Question ${questionNum}`}
+                                  title={`Question ${currentQuestionNum}`}
                                 >
-                                  {questionNum}
+                                  {currentQuestionNum}
                                 </button>,
                               )
+                              currentQuestionNum++
                             }
                           })
 
