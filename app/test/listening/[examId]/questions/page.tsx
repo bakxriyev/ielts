@@ -833,29 +833,34 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
       return false
     } else if (question.q_type === "SUMMARY_DRAG") {
-      const answerEntry = answers[`${question.id}_summary_answers`]
-      if (!answerEntry || typeof answerEntry !== "object") {
-        return false
-      }
+      const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
+      const savedAnswers = localStorage.getItem(answersKey)
+      const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
 
-      let choicesData: Record<string, string> = {}
-      if (question.choices) {
-        if (typeof question.choices === "object") {
-          choicesData = question.choices
-        } else if (typeof question.choices === "string") {
+      let optionsData: Record<string, string> = {}
+      if (question.options) {
+        if (typeof question.options === "object") {
+          optionsData = question.options
+        } else if (typeof question.options === "string") {
           try {
-            choicesData = JSON.parse(question.choices)
+            optionsData = JSON.parse(question.options)
           } catch (e) {
             return false
           }
         }
       }
 
-      const choiceKeys = Object.keys(choicesData)
-      if (subIndex < choiceKeys.length) {
-        const choiceKey = choiceKeys[subIndex]
-        const answer = answerEntry[choiceKey]
-        return answer !== undefined && answer !== ""
+      const optionKeys = Object.keys(optionsData)
+      if (subIndex < optionKeys.length) {
+        const optionKey = optionKeys[subIndex]
+        const answerEntry = answersArray.find(
+          (item: any) =>
+            item.l_questionsID === question.id &&
+            item.question_type === "SUMMARY_DRAG" &&
+            item.answer &&
+            item.answer[optionKey],
+        )
+        return answerEntry !== undefined && answerEntry.answer[optionKey] !== ""
       }
 
       return false
@@ -2573,187 +2578,199 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
 
-                   {question.q_type === "SUMMARY_DRAG" &&
-                                         (() => {
-                                           let optionsData: Record<string, string> = {}
-                                           let choicesArray: string[] = []
-                                           let headersData: string[] = ["People", "Staff Responsibilities"]
-                   
-                                           if (question.options) {
-                                             try {
-                                               optionsData =
-                                                 typeof question.options === "string" ? JSON.parse(question.options) : question.options
-                                             } catch (e) {
-                                               console.error("Failed to parse SUMMARY_DRAG options:", e)
-                                             }
-                                           }
-                   
-                                           if (question.choices) {
-                                             try {
-                                               choicesArray =
-                                                 typeof question.choices === "string" ? JSON.parse(question.choices) : question.choices
-                                             } catch (e) {
-                                               console.error("Failed to parse SUMMARY_DRAG choices:", e)
-                                             }
-                                           }
-                   
-                                           if (question.rows?.headers && Array.isArray(question.rows.headers)) {
-                                             headersData = question.rows.headers
-                                           }
-                   
-                                           const usedChoices = new Set<string>()
-                                           if (currentAnswer && typeof currentAnswer === "object") {
-                                             Object.values(currentAnswer).forEach((v) => v && usedChoices.add(v as string))
-                                           }
-                                           const availableChoices = choicesArray.filter((c) => !usedChoices.has(c))
-                   
-                                           const handleDragStart = (e: React.DragEvent<HTMLDivElement>, choice: string) => {
-                                             e.dataTransfer.effectAllowed = "move"
-                                             e.dataTransfer.setData("text/plain", choice)
-                                             setDraggedItem(choice)
-                                             setDragSource("choices")
-                                           }
-                   
-                                           const handleDragStartFromGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
-                                             const val = currentAnswer?.[key]
-                                             if (val) {
-                                               e.dataTransfer.effectAllowed = "move"
-                                               e.dataTransfer.setData("text/plain", val)
-                                               e.dataTransfer.setData("removeFrom", key)
-                                               setDraggedItem(val)
-                                               setDragSource("gap")
-                                             }
-                                           }
-                   
-                                           const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-                                             e.preventDefault()
-                                             e.currentTarget.classList.add("bg-blue-50", "border-blue-500")
-                                           }
-                   
-                                           const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-                                             e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
-                                           }
-                   
-                                           const handleDropOnGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
-                                             e.preventDefault()
-                                             e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
-                                             const choice = e.dataTransfer.getData("text/plain")
-                                             const removeFrom = e.dataTransfer.getData("removeFrom")
-                                             if (choice) {
-                                               const newAnswer = { ...currentAnswer, [key]: choice }
-                                               if (removeFrom && removeFrom !== key) delete newAnswer[removeFrom]
-                                               handleAnswerChange(question.id.toString(), newAnswer)
-                                             }
-                                             setDraggedItem(null)
-                                             setDragSource(null)
-                                           }
-                   
-                                           const handleDropOnChoices = (e: React.DragEvent<HTMLDivElement>) => {
-                                             e.preventDefault()
-                                             e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
-                                             const removeFrom = e.dataTransfer.getData("removeFrom")
-                                             if (removeFrom) {
-                                               const newAnswer = { ...currentAnswer }
-                                               delete newAnswer[removeFrom]
-                                               handleAnswerChange(question.id.toString(), newAnswer)
-                                             }
-                                             setDraggedItem(null)
-                                             setDragSource(null)
-                                           }
-                   
-                                           return (
-                                             <div className="space-y-5">
-                                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                                 <div className="space-y-2">
-                                                   <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
-                                                     {headersData[0]}
-                                                   </div>
-                   
-                                                   {Object.entries(optionsData).map(([key, text], idx) => {
-                                                     const currentValue = currentAnswer?.[key]
-                                                     const num = questionStartNum + idx
-                                                     return (
-                                                       <div key={key} className="flex items-center justify-between gap-3">
-                                                         <div
-                                                           className="text-gray-900 font-medium flex-1"
-                                                           style={{ fontSize: `${textSize}px` }}
-                                                         >
-                                                           {text}
-                                                         </div>
-                                                         <div
-                                                           className="border-2 border-dashed border-gray-400 rounded-md px-3 py-1 w-[160px] text-center cursor-pointer bg-white hover:border-[#4B61D1] transition-colors"
-                                                           onDragOver={handleDragOver}
-                                                           onDragLeave={handleDragLeave}
-                                                           onDrop={(e) => handleDropOnGap(e, key)}
-                                                         >
-                                                           {currentValue ? (
-                                                             <div
-                                                               draggable
-                                                               onDragStart={(e) => handleDragStartFromGap(e, key)}
-                                                               className="cursor-move text-gray-900 font-semibold truncate"
-                                                               style={{ fontSize: `${textSize}px` }}
-                                                             >
-                                                               {currentValue}
-                                                             </div>
-                                                           ) : (
-                                                             <span
-                                                               className="text-gray-400 font-semibold"
-                                                               style={{ fontSize: `${textSize}px` }}
-                                                             >
-                                                               {num}
-                                                             </span>
-                                                           )}
-                                                         </div>
-                                                       </div>
-                                                     )
-                                                   })}
-                                                 </div>
-                   
-                                                 <div className="space-y-2">
-                                                   <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
-                                                     {headersData[1]}
-                                                   </div>
-                   
-                                                   <div
-                                                     className="border-2 border-dashed border-gray-300 rounded-md px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
-                                                     onDragOver={handleDragOver}
-                                                     onDragLeave={handleDragLeave}
-                                                     onDrop={handleDropOnChoices}
-                                                   ></div>
-                   
-                                                   <div className="space-y-2">
-                                                     {availableChoices.map((choice, idx) => (
-                                                       <div
-                                                         key={idx}
-                                                         draggable
-                                                         onDragStart={(e) => handleDragStart(e, choice)}
-                                                         onDragEnd={() => {
-                                                           setDraggedItem(null)
-                                                           setDragSource(null)
-                                                         }}
-                                                         className={`border border-gray-400 rounded-md px-3 py-1 text-center cursor-move transition-all hover:shadow-sm ${
-                                                           draggedItem === choice ? "opacity-60 bg-gray-100" : "bg-white"
-                                                         }`}
-                                                       >
-                                                         <span className="text-gray-900 font-medium" style={{ fontSize: `${textSize}px` }}>
-                                                           {choice}
-                                                         </span>
-                                                       </div>
-                                                     ))}
-                   
-                                                     {availableChoices.length === 0 && (
-                                                       <p className="text-sm text-gray-500 text-center mt-2">All options used</p>
-                                                     )}
-                                                   </div>
-                                                 </div>
-                                               </div>
-                                             </div>
-                                           )
-                                         })()}
-                                     </div>
-                                   )
-                                 })
-                               })()}
+                    {question.q_type === "SUMMARY_DRAG" &&
+                      (() => {
+                        let optionsData: Record<string, string> = {}
+                        let choicesArray: string[] = []
+                        let headersData: string[] = ["People", "Staff Responsibilities"]
+
+                        if (question.options) {
+                          try {
+                            optionsData =
+                              typeof question.options === "string" ? JSON.parse(question.options) : question.options
+                          } catch (e) {
+                            console.error("Failed to parse SUMMARY_DRAG options:", e)
+                          }
+                        }
+
+                        if (question.choices) {
+                          try {
+                            choicesArray =
+                              typeof question.choices === "string" ? JSON.parse(question.choices) : question.choices
+                          } catch (e) {
+                            console.error("Failed to parse SUMMARY_DRAG choices:", e)
+                          }
+                        }
+
+                        if (question.rows?.headers && Array.isArray(question.rows.headers)) {
+                          headersData = question.rows.headers
+                        }
+
+                        const usedChoices = new Set<string>()
+                        if (currentAnswer && typeof currentAnswer === "object") {
+                          Object.values(currentAnswer).forEach((v) => v && usedChoices.add(v as string))
+                        }
+                        const availableChoices = choicesArray.filter((c) => !usedChoices.has(c))
+
+                        const handleDragStart = (e: React.DragEvent<HTMLDivElement>, choice: string) => {
+                          e.dataTransfer.effectAllowed = "move"
+                          e.dataTransfer.setData("text/plain", choice)
+                          e.currentTarget.classList.add("opacity-60")
+                          setDraggedItem(choice)
+                          setDragSource("choices")
+                        }
+
+                        const handleDragStartFromGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
+                          const val = currentAnswer?.[key]
+                          if (val) {
+                            e.dataTransfer.effectAllowed = "move"
+                            e.dataTransfer.setData("text/plain", val)
+                            e.dataTransfer.setData("removeFrom", key)
+                            e.currentTarget.classList.add("opacity-60")
+                            setDraggedItem(val)
+                            setDragSource("gap")
+                          }
+                        }
+
+                        const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.add("bg-blue-50", "border-blue-500")
+                        }
+
+                        const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
+                        }
+
+                        const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.currentTarget.classList.remove("opacity-60")
+                        }
+
+                        const handleDropOnGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
+                          const choice = e.dataTransfer.getData("text/plain")
+                          const removeFrom = e.dataTransfer.getData("removeFrom")
+                          if (choice) {
+                            const newAnswer = { ...currentAnswer, [key]: choice }
+                            if (removeFrom && removeFrom !== key) delete newAnswer[removeFrom]
+                            handleAnswerChange(question.id.toString(), newAnswer, `${question.id}_summary_`)
+                          }
+                          setDraggedItem(null)
+                          setDragSource(null)
+                        }
+
+                        const handleDropOnChoices = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
+                          const removeFrom = e.dataTransfer.getData("removeFrom")
+                          if (removeFrom) {
+                            const newAnswer = { ...currentAnswer }
+                            delete newAnswer[removeFrom]
+                            handleAnswerChange(question.id.toString(), newAnswer, `${question.id}_summary_`)
+                          }
+                          setDraggedItem(null)
+                          setDragSource(null)
+                        }
+
+                        return (
+                          <div className="space-y-5">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                              <div className="space-y-2">
+                                <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
+                                  {headersData[0]}
+                                </div>
+
+                                {Object.entries(optionsData).map(([key, text], idx) => {
+                                  const currentValue = currentAnswer?.[key]
+                                  const num = questionStartNum + idx
+                                  const isAnswered = currentValue !== undefined && currentValue !== ""
+                                  return (
+                                    <div key={key} className="flex items-center justify-between gap-3">
+                                      <div
+                                        className="text-gray-900 font-medium flex-1"
+                                        style={{ fontSize: `${textSize}px` }}
+                                      >
+                                        {text}
+                                      </div>
+                                      <div
+                                        className={`border-2 border-dashed rounded-md px-3 py-1 w-[160px] text-center cursor-pointer transition-all ${
+                                          isAnswered
+                                            ? "bg-green-50 border-green-500"
+                                            : "bg-white border-gray-400 hover:border-[#4B61D1]"
+                                        }`}
+                                        onDragOver={handleDragOver}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={(e) => handleDropOnGap(e, key)}
+                                      >
+                                        {currentValue ? (
+                                          <div
+                                            draggable
+                                            onDragStart={(e) => handleDragStartFromGap(e, key)}
+                                            onDragEnd={handleDragEnd}
+                                            className="cursor-move text-gray-900 font-semibold truncate hover:opacity-70"
+                                            style={{ fontSize: `${textSize}px` }}
+                                            title="Drag back to options to remove"
+                                          >
+                                            {currentValue}
+                                          </div>
+                                        ) : (
+                                          <span
+                                            className="text-gray-400 font-semibold"
+                                            style={{ fontSize: `${textSize}px` }}
+                                          >
+                                            {num}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
+                                  {headersData[1]}
+                                </div>
+
+                                <div
+                                  className="border-2 border-dashed border-gray-300 rounded-md px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors min-h-[40px] flex items-center justify-center"
+                                  onDragOver={handleDragOver}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={handleDropOnChoices}
+                                >
+                                  <span className="text-sm text-gray-500">Drop here to remove</span>
+                                </div>
+
+                                <div className="space-y-2">
+                                  {availableChoices.map((choice, idx) => (
+                                    <div
+                                      key={idx}
+                                      draggable
+                                      onDragStart={(e) => handleDragStart(e, choice)}
+                                      onDragEnd={handleDragEnd}
+                                      className={`border border-gray-400 rounded-md px-3 py-2 text-center cursor-move transition-all hover:shadow-md ${
+                                        draggedItem === choice ? "opacity-60 bg-gray-100" : "bg-white"
+                                      }`}
+                                    >
+                                      <span className="text-gray-900 font-medium" style={{ fontSize: `${textSize}px` }}>
+                                        {choice}
+                                      </span>
+                                    </div>
+                                  ))}
+
+                                  {availableChoices.length === 0 && (
+                                    <p className="text-sm text-gray-500 text-center mt-2">All options used</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                  </div>
+                )
+              })
+            })()}
           </div>
         </div>
       </div>
