@@ -72,7 +72,7 @@ const MockTestPage = () => {
   const [examData, setExamData] = useState<ExamData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showPasswordModal, setShowPasswordModal] = useState(false) // Changed default to false
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [completionStatus, setCompletionStatus] = useState<{ [key: string]: boolean }>({})
   const [showCompletionModal, setShowCompletionModal] = useState(false)
@@ -81,7 +81,6 @@ const MockTestPage = () => {
   const checkPasswordInStorage = (examId: string, actualPassword: string): boolean => {
     try {
       const savedPassword = localStorage.getItem(`exam_password_${examId}`)
-      // Check if saved password matches the actual mock password
       return savedPassword === actualPassword
     } catch (error) {
       console.error("Error checking password in storage:", error)
@@ -104,6 +103,10 @@ const MockTestPage = () => {
         router.push("/join")
         return
       }
+
+      const examId = params.id as string
+      localStorage.setItem("current_exam_id", examId)
+      console.log("[v0] Saved exam ID to localStorage:", examId)
 
       fetchExamData()
     }
@@ -143,12 +146,10 @@ const MockTestPage = () => {
       const actualPassword = examData.password
       const isPasswordValid = checkPasswordInStorage(examId, actualPassword)
 
-      // Only show password modal if is_active is true AND password is not valid
       if (examData.is_active && !isPasswordValid) {
         setShowPasswordModal(true)
         setIsAuthenticated(false)
       } else {
-        // If is_active is false OR password is valid, skip password modal
         setShowPasswordModal(false)
         setIsAuthenticated(true)
       }
@@ -215,9 +216,9 @@ const MockTestPage = () => {
     const sections: ExamSection[] = []
 
     if (data.readings && data.readings.length > 0) {
-      const readingId = data.readings[0].id // Use the actual reading ID
+      const readingId = data.readings[0].id
       sections.push({
-        id: readingId, // Changed from `reading_${data.id}` to actual reading ID
+        id: readingId,
         name: "Reading",
         description: "Academic Reading Test",
         duration: "60 minutes",
@@ -229,9 +230,9 @@ const MockTestPage = () => {
     }
 
     if (data.listenings && data.listenings.length > 0) {
-      const listeningId = data.listenings[0].id // Use the actual listening ID
+      const listeningId = data.listenings[0].id
       sections.push({
-        id: listeningId, // Changed from `listening_${data.id}` to actual listening ID
+        id: listeningId,
         name: "Listening",
         description: "Academic Listening Test",
         duration: "30 minutes",
@@ -243,9 +244,9 @@ const MockTestPage = () => {
     }
 
     if (data.writings && data.writings.length > 0) {
-      const writingId = data.writings[0].id // Use the actual writing ID
+      const writingId = data.writings[0].id
       sections.push({
-        id: writingId, // Changed from `writing_${data.id}` to actual writing ID
+        id: writingId,
         name: "Writing",
         description: "Academic Writing Test",
         duration: "60 minutes",
@@ -282,7 +283,6 @@ const MockTestPage = () => {
       return
     }
 
-    // Use section ID instead of mock ID
     router.push(`/test/${sectionName.toLowerCase()}/${sectionId}`)
   }
 
@@ -338,7 +338,6 @@ const MockTestPage = () => {
         correctPassword={examData?.password}
         examTitle={examData?.title}
       />
-      {/* */}
 
       <CompletionModal isOpen={showCompletionModal} onClose={() => setShowCompletionModal(false)} />
 
@@ -352,7 +351,6 @@ const MockTestPage = () => {
               >
                 <ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4" />
                 <span className="hidden sm:inline">Back to join</span>
-                
               </Link>
               <div className="flex items-center gap-2 sm:gap-3">
                 <Image
@@ -520,7 +518,7 @@ const MockTestPage = () => {
               <span className="text-blue-300 font-medium text-sm sm:text-base">REALIELTSEXAM</span>
             </div>
             <div className="text-xs sm:text-sm text-blue-400 text-center">
-              © 2024 REALIELTSEXAM. All rights reserved.
+              © 2025 REALIELTSEXAM. All rights reserved.
             </div>
           </div>
         </div>

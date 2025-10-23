@@ -10,6 +10,32 @@ interface RegisterResult {
   message?: string
 }
 
+interface User {
+  id: string
+  email?: string
+  name?: string
+  username?: string
+  readingAnswers?: any[]
+  listeningAnswers?: any[]
+  writingAnswers?: any[]
+  speakingAnswers?: any[]
+  [key: string]: any
+}
+
+
+interface AuthResponse {
+  accessToken?: string
+  refreshToken?: string
+  user?: User
+  // Also support flat structure for backward compatibility
+  id?: string
+  email?: string
+  name?: string
+  username?: string
+  [key: string]: any
+}
+
+
 const TEST_USER = {
   id: 1,
   name: "Test User",
@@ -114,22 +140,56 @@ export async function registerUser(
   }
 }
 
-export function getStoredUser() {
+export function getStoredUser(): User | null {
   if (typeof window === "undefined") return null
 
-  const storedUser = localStorage.getItem("user")
-  if (storedUser) {
+  const storedData = localStorage.getItem("user")
+  if (storedData) {
     try {
-      return JSON.parse(storedUser)
+      const parsed: AuthResponse = JSON.parse(storedData)
+
+      if (parsed.user) {
+        return parsed.user
+      }
+
+      return parsed as User
     } catch (error) {
-      console.error("Failed to parse stored user:", error)
+      console.error("[v0] Failed to parse stored user:", error)
       return null
     }
   }
   return null
 }
 
-export function getAuthToken() {
+export function getStoredUserId(): string | null {
+  const user = getStoredUser()
+  return user?.id || null
+}
+
+export function getAuthToken(): string | null {
   if (typeof window === "undefined") return null
+
+  const storedData = localStorage.getItem("user")
+  if (storedData) {
+    try {
+      const parsed: AuthResponse = JSON.parse(storedData)
+      return parsed.accessToken || localStorage.getItem("token") || null
+    } catch (error) {
+      return localStorage.getItem("token")
+    }
+  }
+
   return localStorage.getItem("token")
+}
+
+export function saveUser(authResponse: AuthResponse): void {
+  if (typeof window === "undefined") return
+  localStorage.setItem("user", JSON.stringify(authResponse))
+
+  if (authResponse.accessToken) {
+    localStorage.setItem("token", authResponse.accessToken)
+  }
+  if (authResponse.refreshToken) {
+    localStorage.setItem("refreshToken", authResponse.refreshToken)
+  }
 }

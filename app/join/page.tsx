@@ -7,24 +7,22 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { ArrowLeft } from "lucide-react"
+import { saveUser } from "@/lib/auth"
 
 export default function JoinPage() {
   const [step, setStep] = useState<"login" | "mock">("login")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [mockId, setMockId] = useState("")
-  const { setUser } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
     localStorage.clear()
     console.log("[v0] Cleared all localStorage data on join page entry")
   }, [])
-  // </CHANGE>
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,12 +60,10 @@ export default function JoinPage() {
       const userData = await response.json()
       console.log("[v0] User logged in:", userData)
 
-      localStorage.setItem("user", JSON.stringify(userData))
+      saveUser(userData)
       localStorage.setItem("token", `join_token_${userData.id}`)
-      // setUser(userData)
 
-      setStep("mock") // Move to next step
-      // </CHANGE>
+      setStep("mock")
     } catch (err) {
       console.error("[v0] Error logging in:", err)
       setError("Failed to connect to server. Please try again later.")
@@ -83,6 +79,10 @@ export default function JoinPage() {
       return
     }
     setError("")
+
+    localStorage.setItem("current_exam_id", mockId)
+    console.log("[v0] Saved exam ID to localStorage:", mockId)
+
     router.push(`/mock/${mockId}`)
   }
 
@@ -197,7 +197,6 @@ export default function JoinPage() {
                   </Button>
                 </form>
               )}
-              {/* </CHANGE> */}
             </CardContent>
           </Card>
         </div>
