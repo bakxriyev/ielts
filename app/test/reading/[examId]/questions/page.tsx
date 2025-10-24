@@ -73,8 +73,6 @@ interface Question {
   instructions?: string
   passage?: string
   order?: number
-  labels?: any[]
-  answers?: Record<string, string>
 }
 
 interface Passage {
@@ -1427,65 +1425,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     })
 
     let count = 0
-
     for (const questionGroup of partQuestions) {
       if (questionGroup.r_questions && questionGroup.r_questions.length > 0) {
-        questionGroup.r_questions.forEach((question) => {
-          const questionId = `${questionGroup.id}_${question.id}`
-
-          if (question.q_type === "TABLE_COMPLETION") {
-            // Count empty cells in table
-            if (question.rows && Array.isArray(question.rows)) {
-              question.rows.forEach((row) => {
-                if (row.cells && Array.isArray(row.cells)) {
-                  row.cells.forEach((cell) => {
-                    if (cell === "" || cell === "_") {
-                      count++
-                    }
-                  })
-                }
-              })
-            } else if (question.table_structure?.rows) {
-              question.table_structure.rows.forEach((row) => {
-                Object.entries(row).forEach(([cellKey, cellValue]) => {
-                  if (cellValue === "" || cellValue === "_") {
-                    count++
-                  }
-                })
-              })
-            }
-          } else if (question.q_type === "MCQ_MULTI") {
-            // Count number of correct answers
-            count += question.correct_answers?.length || 1
-          } else if (question.q_type === "MATCHING_INFORMATION") {
-            // Count number of rows
-            count += (question as any).rows?.length || 1
-          } else if (question.q_type === "MATCHING_HEADINGS") {
-            // Count number of answers in the answers object
-            count += Object.keys(question.answers || {}).length
-          } else if (question.q_type === "NOTE_COMPLETION") {
-            // Count number of blanks
-            const blankCount = (question.q_text?.match(/____+/g) || []).length
-            count += blankCount
-          } else if (question.q_type === "SENTENCE_COMPLETION" || question.q_type === "SUMMARY_COMPLETION") {
-            // Count number of blanks or inputs
-            const blankCount = (question.q_text?.match(/____+/g) || []).length
-            count += blankCount > 0 ? blankCount : 1
-          } else if (question.q_type === "DIAGRAM_LABELING") {
-            // Count number of labels
-            count += (question as any).labels?.length || 1
-          } else if (question.q_type === "FLOW_CHART_COMPLETION") {
-            // Count number of blanks in flow chart
-            const blankCount = (question.q_text?.match(/____+/g) || []).length
-            count += blankCount > 0 ? blankCount : 1
-          } else {
-            // For other question types (MCQ, TRUE_FALSE_NOT_GIVEN, etc.)
-            count++
-          }
-        })
+        count += questionGroup.r_questions.length
       }
     }
-
     return count
   }
 
@@ -1919,17 +1863,14 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
             return (
               <div key={question.id} id={`question-${questionGroup.id}_${question.id}`} className="space-y-4">
-                {(question.q_type !== "MCQ_MULTI" &&
-                  question.q_type !== "MATCHING_HEADINGS" &&
-                  question.q_type !== "MATCHING_INFORMATION" &&
-                  question.q_type !== "TFNG" &&
-                  question.q_type !== "TRUE_FALSE_NOT_GIVEN" &&
-                  question.q_type !== "MCQ_SINGLE" &&
-                  question.q_type !== "NOTE_COMPLETION" &&
-                  question.q_type !== "TABLE_COMPLETION" &&
-                  question.q_type !== "DIAGRAM_LABELING" &&
-                  question.q_type !== "FLOW_CHART_COMPLETION") ||
-                question.q_text ? (
+                {question.q_type !== "MCQ_MULTI" &&
+                question.q_type !== "MATCHING_HEADINGS" &&
+                question.q_type !== "MATCHING_INFORMATION" &&
+                question.q_type !== "TFNG" &&
+                question.q_type !== "TRUE_FALSE_NOT_GIVEN" &&
+                question.q_type !== "MCQ_SINGLE" &&
+                question.q_type !== "NOTE_COMPLETION" &&
+                question.q_type !== "TABLE_COMPLETION" ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
                       <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
@@ -1963,14 +1904,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                             const blankCount = (question.q_text?.match(/____+/g) || []).length
                             const endNum = startNum + blankCount - 1
                             return blankCount > 1 ? `${startNum}–${endNum}` : startNum
-                          } else if (question.q_type === "DIAGRAM_LABELING") {
-                            const labelsCount = (question as any).labels?.length || 1
-                            const endNum = startNum + labelsCount - 1
-                            return labelsCount > 1 ? `${startNum}–${endNum}` : startNum
-                          } else if (question.q_type === "FLOW_CHART_COMPLETION") {
-                            const blankCount = (question.q_text?.match(/____+/g) || []).length
-                            const endNum = startNum + blankCount - 1
-                            return blankCount > 1 ? `${startNum}–${endNum}` : startNum
                           }
 
                           return startNum
@@ -1986,10 +1919,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   </div>
                 ) : null}
 
-                {(question.q_type === "NOTE_COMPLETION" ||
-                  question.q_type === "TABLE_COMPLETION" ||
-                  question.q_type === "DIAGRAM_LABELING" ||
-                  question.q_type === "FLOW_CHART_COMPLETION") &&
+                {(question.q_type === "NOTE_COMPLETION" || question.q_type === "TABLE_COMPLETION") &&
                   question.q_text && (
                     <div
                       className={`text-lg font-medium ${colorStyles.text}`}
@@ -2462,74 +2392,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                         </table>
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {/* Diagram Labeling */}
-                {question.q_type === "DIAGRAM_LABELING" && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
-                        {(() => {
-                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-                          const labelsCount = (question as any).labels?.length || 1
-                          const endNum = startNum + labelsCount - 1
-                          return labelsCount > 1 ? `${startNum}–${endNum}` : startNum
-                        })()}
-                      </span>
-                    </div>
-                    {question.q_text && (
-                      <div
-                        className={`text-lg font-medium ${colorStyles.text}`}
-                        dangerouslySetInnerHTML={{ __html: question.q_text }}
-                      />
-                    )}
-                    {question.photo && (
-                      <img
-                        src={question.photo || "/placeholder.svg"}
-                        alt="Diagram"
-                        className="max-w-full h-auto rounded-lg shadow-md"
-                      />
-                    )}
-                    {(question as any).labels?.map((label: { id: string; text: string }, index: number) => {
-                      const labelQuestionId = `${questionId}_label_${label.id}`
-                      const currentLabelAnswer = answers[labelQuestionId] || ""
-                      return (
-                        <div key={label.id} className="flex items-center gap-3">
-                          <span className="bg-gray-700 text-white px-2.5 py-1 rounded text-sm font-bold shrink-0">
-                            {getQuestionNumber(`${questionGroup.id}_${question.id}`) + index}
-                          </span>
-                          <Input
-                            value={currentLabelAnswer}
-                            onChange={(e) => handleAnswerChange(labelQuestionId, e.target.value)}
-                            className={`flex-1 text-sm bg-white text-black border-2 border-black focus:border-black ${colorStyles.inputBg}`}
-                            placeholder="Enter label"
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Flow Chart Completion */}
-                {question.q_type === "FLOW_CHART_COMPLETION" && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
-                        {(() => {
-                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-                          const blankCount = (question.q_text?.match(/____+/g) || []).length
-                          const endNum = startNum + blankCount - 1
-                          return blankCount > 1 ? `${startNum}–${endNum}` : startNum
-                        })()}
-                      </span>
-                    </div>
-                    {question.q_text && (
-                      <div
-                        className={`text-lg font-medium ${colorStyles.text}`}
-                        dangerouslySetInnerHTML={{ __html: question.q_text }}
-                      />
-                    )}
                   </div>
                 )}
               </div>
