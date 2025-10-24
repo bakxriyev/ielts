@@ -451,12 +451,32 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     } else if (questionIdentifier && questionIdentifier.includes("_map_")) {
       const parts = questionIdentifier.split("_")
       const baseQuestionId = parts[0]
-      const choiceNum = parts[2]
+      const position = parts[2]
 
       if (!newAnswers[baseQuestionId]) {
         newAnswers[baseQuestionId] = {}
       }
-      newAnswers[baseQuestionId][choiceNum] = answer
+      newAnswers[baseQuestionId][position] = answer
+    } else if (questionIdentifier && questionIdentifier.includes("_flow_")) {
+      const parts = questionIdentifier.split("_")
+      const baseQuestionId = parts[0]
+      const stepNum = parts[2]
+
+      if (!newAnswers[baseQuestionId]) {
+        newAnswers[baseQuestionId] = {}
+      }
+      newAnswers[baseQuestionId][stepNum] = answer
+    } else if (questionIdentifier && questionIdentifier.includes("_table_")) {
+      const parts = questionIdentifier.split("_")
+      const baseQuestionId = parts[0]
+      const rowIndex = parts[2]
+      const cellIndex = parts[3]
+      const cellKey = `${rowIndex}_${cellIndex}`
+
+      if (!newAnswers[baseQuestionId]) {
+        newAnswers[baseQuestionId] = {}
+      }
+      newAnswers[baseQuestionId][cellKey] = answer
     } else if (questionIdentifier && questionIdentifier.includes("_summary_")) {
       const summaryAnswersKey = `${questionIdStr}_summary_answers`
       if (!newAnswers[summaryAnswersKey]) {
@@ -483,7 +503,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
         const choiceNum = parts[2]
-        const selectedOption = answer
 
         const tfngQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
 
@@ -495,25 +514,24 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         const l_questionsID = tfngQuestion.id
 
         const existingAnswerIndex = answersArray.findIndex(
-          (item: any) => item.l_questionsID === l_questionsID && item.question_type === "TFNG",
+          (item: any) =>
+            item.l_questionsID === l_questionsID &&
+            item.question_type === "TFNG" &&
+            item.answer &&
+            item.answer[choiceNum],
         )
 
-        let tfngAnswers: Record<string, string> = {}
-
         if (existingAnswerIndex !== -1) {
-          const existingAnswer = answersArray[existingAnswerIndex].answer
-          tfngAnswers = typeof existingAnswer === "object" ? { ...existingAnswer } : {}
           answersArray.splice(existingAnswerIndex, 1)
         }
 
-        tfngAnswers[choiceNum] = selectedOption
-
+        // Push new answer with only this choice
         answersArray.push({
           userId: String(userId),
           questionId: tfngQuestion.listening_questions_id,
           examId: Number.parseInt(getExamIdForAnswers()),
           question_type: actualQuestionType,
-          answer: tfngAnswers,
+          answer: { [choiceNum]: answer },
           l_questionsID: l_questionsID,
         })
       } else if (questionIdentifier && questionIdentifier.includes("_note_")) {
@@ -530,13 +548,15 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
         const l_questionsID = noteQuestion.id
 
+        const oneBasedIndex = (Number.parseInt(inputIndex) + 1).toString()
+
         // Remove old answer for this specific input
         const existingAnswerIndex = answersArray.findIndex(
           (item: any) =>
             item.l_questionsID === l_questionsID &&
             item.question_type === "NOTE_COMPLETION" &&
             item.answer &&
-            item.answer[inputIndex],
+            item.answer[oneBasedIndex],
         )
 
         if (existingAnswerIndex !== -1) {
@@ -548,7 +568,111 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
           questionId: noteQuestion.listening_questions_id,
           examId: Number.parseInt(getExamIdForAnswers()),
           question_type: actualQuestionType,
-          answer: { [inputIndex]: answer },
+          answer: { [oneBasedIndex]: answer },
+          l_questionsID: l_questionsID,
+        })
+      } else if (questionIdentifier && questionIdentifier.includes("_map_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const position = parts[2]
+
+        const mapQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+        if (!mapQuestion) {
+          console.error("[v0] Could not find MAP_LABELING question for baseQuestionId:", baseQuestionId)
+          return
+        }
+
+        const l_questionsID = mapQuestion.id
+
+        const existingAnswerIndex = answersArray.findIndex(
+          (item: any) =>
+            item.l_questionsID === l_questionsID &&
+            item.question_type === "MAP_LABELING" &&
+            item.answer &&
+            item.answer[position],
+        )
+
+        if (existingAnswerIndex !== -1) {
+          answersArray.splice(existingAnswerIndex, 1)
+        }
+
+        answersArray.push({
+          userId: String(userId),
+          questionId: mapQuestion.listening_questions_id,
+          examId: Number.parseInt(getExamIdForAnswers()),
+          question_type: "MAP_LABELING",
+          answer: { [position]: answer },
+          l_questionsID: l_questionsID,
+        })
+      } else if (questionIdentifier && questionIdentifier.includes("_flow_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const stepNum = parts[2]
+
+        const flowQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+        if (!flowQuestion) {
+          console.error("[v0] Could not find FLOW_CHART question for baseQuestionId:", baseQuestionId)
+          return
+        }
+
+        const l_questionsID = flowQuestion.id
+
+        const existingAnswerIndex = answersArray.findIndex(
+          (item: any) =>
+            item.l_questionsID === l_questionsID &&
+            item.question_type === "FLOW_CHART" &&
+            item.answer &&
+            item.answer[stepNum],
+        )
+
+        if (existingAnswerIndex !== -1) {
+          answersArray.splice(existingAnswerIndex, 1)
+        }
+
+        answersArray.push({
+          userId: String(userId),
+          questionId: flowQuestion.listening_questions_id,
+          examId: Number.parseInt(getExamIdForAnswers()),
+          question_type: "FLOW_CHART",
+          answer: { [stepNum]: answer },
+          l_questionsID: l_questionsID,
+        })
+      } else if (questionIdentifier && questionIdentifier.includes("_table_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const rowIndex = parts[2]
+        const cellIndex = parts[3]
+        const cellKey = `${rowIndex}_${cellIndex}`
+
+        const tableQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+
+        if (!tableQuestion) {
+          console.error("[v0] Could not find TABLE_COMPLETION question for baseQuestionId:", baseQuestionId)
+          return
+        }
+
+        const l_questionsID = tableQuestion.id
+
+        const existingAnswerIndex = answersArray.findIndex(
+          (item: any) =>
+            item.l_questionsID === l_questionsID &&
+            item.question_type === "TABLE_COMPLETION" &&
+            item.answer &&
+            item.answer[cellKey],
+        )
+
+        if (existingAnswerIndex !== -1) {
+          answersArray.splice(existingAnswerIndex, 1)
+        }
+
+        answersArray.push({
+          userId: String(userId),
+          questionId: tableQuestion.listening_questions_id,
+          examId: Number.parseInt(getExamIdForAnswers()),
+          question_type: "TABLE_COMPLETION",
+          answer: { [cellKey]: answer },
           l_questionsID: l_questionsID,
         })
       } else if (questionIdentifier && questionIdentifier.includes("_summary_")) {
@@ -584,18 +708,34 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
         const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
         const l_questionsID = question?.listening_questions_id
 
+        // Remove old answers for this question
         answersArray = answersArray.filter(
           (item: any) => !(item.questionId === l_questionsID && item.l_questionsID === Number.parseInt(questionIdStr)),
         )
 
-        answersArray.push({
-          userId: String(userId),
-          questionId: l_questionsID,
-          examId: Number.parseInt(getExamIdForAnswers()),
-          question_type: actualQuestionType,
-          answer: answer,
-          l_questionsID: Number.parseInt(questionIdStr),
-        })
+        // For MCQ_MULTI, save each selected answer as a separate entry
+        if (actualQuestionType === "MCQ_MULTI" && Array.isArray(answer)) {
+          answer.forEach((singleAnswer: string) => {
+            answersArray.push({
+              userId: String(userId),
+              questionId: l_questionsID,
+              examId: Number.parseInt(getExamIdForAnswers()),
+              question_type: actualQuestionType,
+              answer: singleAnswer,
+              l_questionsID: Number.parseInt(questionIdStr),
+            })
+          })
+        } else {
+          // For MCQ_SINGLE and other types, save as single entry
+          answersArray.push({
+            userId: String(userId),
+            questionId: l_questionsID,
+            examId: Number.parseInt(getExamIdForAnswers()),
+            question_type: actualQuestionType,
+            answer: answer,
+            l_questionsID: Number.parseInt(questionIdStr),
+          })
+        }
       }
     } else {
       if (questionIdentifier && questionIdentifier.includes("_note_")) {
@@ -605,37 +745,88 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
         const noteQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
         if (noteQuestion) {
+          const oneBasedIndex = (Number.parseInt(inputIndex) + 1).toString()
           answersArray = answersArray.filter(
             (item: any) =>
               !(
                 item.l_questionsID === noteQuestion.id &&
                 item.question_type === "NOTE_COMPLETION" &&
                 item.answer &&
-                item.answer[inputIndex]
+                item.answer[oneBasedIndex]
               ),
           )
         }
       } else if (questionIdentifier && questionIdentifier.includes("_map_")) {
         const parts = questionIdentifier.split("_")
         const baseQuestionId = parts[0]
-        const choiceNum = parts[2]
+        const position = parts[2]
 
-        const tfngQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
-        if (tfngQuestion) {
+        const mapQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        if (mapQuestion) {
           const existingAnswerIndex = answersArray.findIndex(
-            (item: any) => item.l_questionsID === tfngQuestion.id && item.question_type === "TFNG",
+            (item: any) =>
+              item.l_questionsID === mapQuestion.id &&
+              item.question_type === "MAP_LABELING" &&
+              item.answer &&
+              item.answer[position],
           )
 
           if (existingAnswerIndex !== -1) {
-            const existingAnswer = answersArray[existingAnswerIndex].answer
-            if (typeof existingAnswer === "object" && existingAnswer[choiceNum]) {
-              delete existingAnswer[choiceNum]
-              if (Object.keys(existingAnswer).length === 0) {
-                answersArray.splice(existingAnswerIndex, 1)
-              }
-            }
+            answersArray.splice(existingAnswerIndex, 1)
           }
         }
+      } else if (questionIdentifier && questionIdentifier.includes("_flow_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const stepNum = parts[2]
+
+        const flowQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        if (flowQuestion) {
+          const existingAnswerIndex = answersArray.findIndex(
+            (item: any) =>
+              item.l_questionsID === flowQuestion.id &&
+              item.question_type === "FLOW_CHART" &&
+              item.answer &&
+              item.answer[stepNum],
+          )
+
+          if (existingAnswerIndex !== -1) {
+            answersArray.splice(existingAnswerIndex, 1)
+          }
+        }
+      } else if (questionIdentifier && questionIdentifier.includes("_table_")) {
+        const parts = questionIdentifier.split("_")
+        const baseQuestionId = parts[0]
+        const rowIndex = parts[2]
+        const cellIndex = parts[3]
+        const cellKey = `${rowIndex}_${cellIndex}`
+
+        const tableQuestion = getAllQuestions().find((q) => q.id.toString() === baseQuestionId)
+        if (tableQuestion) {
+          const existingAnswerIndex = answersArray.findIndex(
+            (item: any) =>
+              item.l_questionsID === tableQuestion.id &&
+              item.question_type === "TABLE_COMPLETION" &&
+              item.answer &&
+              item.answer[cellKey],
+          )
+
+          if (existingAnswerIndex !== -1) {
+            answersArray.splice(existingAnswerIndex, 1)
+          }
+        }
+      } else if (actualQuestionType === "MCQ_MULTI" && Array.isArray(answer)) {
+        // For MCQ_MULTI, if an answer is deselected, remove its corresponding entry
+        answersArray = answersArray.filter(
+          (item: any) => !(item.l_questionsID === Number.parseInt(questionIdStr) && item.answer === answer),
+        )
+      } else {
+        // For other question types, remove the answer if the input is cleared
+        const question = getAllQuestions().find((q) => q.id.toString() === questionIdStr)
+        const l_questionsID = question?.listening_questions_id
+        answersArray = answersArray.filter(
+          (item: any) => !(item.questionId === l_questionsID && item.l_questionsID === Number.parseInt(questionIdStr)),
+        )
       }
     }
 
@@ -797,19 +988,19 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
       const savedAnswers = localStorage.getItem(answersKey)
       const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
 
+      const oneBasedIndex = (subIndex + 1).toString()
       const answerEntry = answersArray.find(
         (item: any) =>
           item.l_questionsID === question.id &&
           item.question_type === "NOTE_COMPLETION" &&
           item.answer &&
-          item.answer[subIndex.toString()],
+          item.answer[oneBasedIndex],
       )
-      return answerEntry !== undefined && answerEntry.answer[subIndex.toString()] !== ""
+      return answerEntry !== undefined && answerEntry.answer[oneBasedIndex] !== ""
     } else if (question.q_type === "TFNG") {
-      const answerEntry = answers[question.id]
-      if (!answerEntry || typeof answerEntry !== "object") {
-        return false
-      }
+      const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
+      const savedAnswers = localStorage.getItem(answersKey)
+      const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
 
       let choicesData: Record<string, string> = {}
       if (question.choices) {
@@ -827,8 +1018,16 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
       const choiceKeys = Object.keys(choicesData)
       if (subIndex < choiceKeys.length) {
         const choiceNum = choiceKeys[subIndex]
-        const answer = answerEntry[choiceNum]
-        return answer !== undefined && answer !== "" && answer !== null
+        const answerEntry = answersArray.find(
+          (item: any) =>
+            item.l_questionsID === question.id &&
+            item.question_type === "TFNG" &&
+            item.answer &&
+            item.answer[choiceNum],
+        )
+        return (
+          answerEntry !== undefined && answerEntry.answer[choiceNum] !== "" && answerEntry.answer[choiceNum] !== null
+        )
       }
 
       return false
@@ -1132,10 +1331,29 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
           parsedAnswers.forEach((item: any) => {
             if (item.question_type === "NOTE_COMPLETION") {
-              const inputIndex = Object.keys(item.answer)[0]
-              const inputId = `${item.l_questionsID}_note_${Number.parseInt(inputIndex) - 1}`
-              loadedAnswers[inputId] = item.answer[inputIndex]
+              const oneBasedIndex = Object.keys(item.answer)[0]
+              const zeroBasedIndex = (Number.parseInt(oneBasedIndex) - 1).toString()
+              const inputId = `${item.l_questionsID}_note_${zeroBasedIndex}`
+              loadedAnswers[inputId] = item.answer[oneBasedIndex]
             } else if (item.question_type === "TFNG") {
+              const baseId = item.l_questionsID.toString()
+              if (!loadedAnswers[baseId]) {
+                loadedAnswers[baseId] = {}
+              }
+              Object.assign(loadedAnswers[baseId], item.answer)
+            } else if (item.question_type === "TABLE_COMPLETION") {
+              const baseId = item.l_questionsID.toString()
+              if (!loadedAnswers[baseId]) {
+                loadedAnswers[baseId] = {}
+              }
+              Object.assign(loadedAnswers[baseId], item.answer)
+            } else if (item.question_type === "FLOW_CHART") {
+              const baseId = item.l_questionsID.toString()
+              if (!loadedAnswers[baseId]) {
+                loadedAnswers[baseId] = {}
+              }
+              Object.assign(loadedAnswers[baseId], item.answer)
+            } else if (item.question_type === "MAP_LABELING") {
               const baseId = item.l_questionsID.toString()
               if (!loadedAnswers[baseId]) {
                 loadedAnswers[baseId] = {}
@@ -1146,9 +1364,11 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
               if (!loadedAnswers[baseId]) {
                 loadedAnswers[baseId] = []
               }
-              if (Array.isArray(loadedAnswers[baseId])) {
-                loadedAnswers[baseId].push(item.answer)
+              // Collect all answers for this question from separate entries
+              if (!Array.isArray(loadedAnswers[baseId])) {
+                loadedAnswers[baseId] = []
               }
+              loadedAnswers[baseId].push(item.answer)
             } else if (item.question_type === "SUMMARY_DRAG") {
               const summaryAnswersKey = `${item.l_questionsID}_summary_answers`
               if (!loadedAnswers[summaryAnswersKey]) {
@@ -1184,7 +1404,8 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     }
 
     if (questionType === "TABLE_COMPLETION") {
-      answersObject[questionIdentifier] = answer
+      const tableAnswersKey = `${questionIdentifier}_answer`
+      answersObject[tableAnswersKey] = answer
     } else {
       answersObject[questionIdentifier] = answer
     }
@@ -1532,7 +1753,9 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                 if (questionType === "TABLE_COMPLETION") {
                   const tableAnswersKey = `${questionId}_answer`
                   currentAnswer = answers[tableAnswersKey] || {}
-                } else if (questionType === "TFNG") {
+                } else if (questionType === "MAP_LABELING") {
+                  currentAnswer = answers[questionId] || {}
+                } else if (questionType === "FLOW_CHART") {
                   currentAnswer = answers[questionId] || {}
                 } else if (questionType === "SUMMARY_DRAG") {
                   currentAnswer = answers[`${questionId}_summary_answers`] || {}
@@ -1805,11 +2028,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 (Array.isArray(question.correct_answers) ? question.correct_answers.length : 1) -
                                 1}
                             </span>
-
-                            {/* <span
-                              className="text-[15px] text-gray-900 font-semibold"
-                              dangerouslySetInnerHTML={{ __html: question.q_text }}
-                            /> */}
                           </div>
                         )}
 
@@ -1833,7 +2051,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                               key={option.key}
                               htmlFor={`q${question.id}-${option.key}`}
                               onClick={() => {
-                                if (!canSelect) return // Prevent selection if limit reached
+                                if (!canSelect) return
 
                                 let newAnswers: string[]
                                 if (isSelected) {
@@ -1855,7 +2073,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 type="checkbox"
                                 id={`q${question.id}-${option.key}`}
                                 checked={isSelected}
-                                disabled={!canSelect} // Disable checkbox if limit reached
+                                disabled={!canSelect}
                                 readOnly
                                 className="peer relative w-[16px] h-[16px] rounded-[3px] border border-black appearance-none cursor-pointer bg-white transition-all duration-150
                                 checked:before:content-[''] checked:before:absolute checked:before:top-[3px] checked:before:left-[3px]
@@ -2026,9 +2244,25 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                     {question.q_type === "TABLE_COMPLETION" && (
                       <div className="overflow-x-auto">
                         <table className="w-full border-collapse border-2 border-black">
+                          <thead>
+                            <tr>
+                              <th className="border-2 border-black p-2 bg-gray-100 font-bold text-left"></th>
+                              {question.columns?.map((column: string, colIndex: number) => (
+                                <th
+                                  key={colIndex}
+                                  className="border-2 border-black p-2 bg-gray-100 font-bold text-center"
+                                >
+                                  {column}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
                           <tbody>
                             {question.rows?.map((row: any, rowIndex: number) => (
                               <tr key={rowIndex}>
+                                <td className="border-2 border-black p-2 bg-gray-50 font-bold text-left">
+                                  {row.label}
+                                </td>
                                 {row.cells?.map((cell: string, cellIndex: number) => {
                                   const isEmptyOrUnderscore = cell === "" || cell === "_"
                                   const hasUnderscores =
@@ -2039,7 +2273,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                     const tableAnswers = answers[tableAnswersKey] || {}
                                     const cellKey = `${rowIndex}_${cellIndex}`
 
-                                    // Har bir input uchun placeholder nomerini hisoblash
                                     let inputQuestionNumber = questionStartNum
                                     for (let r = 0; r < rowIndex; r++) {
                                       for (let c = 0; c < question.rows[r].cells.length; c++) {
@@ -2075,12 +2308,17 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                                     <Input
                                                       key={partIndex}
                                                       value={tableAnswers[cellKey] || ""}
-                                                      onChange={(e) =>
+                                                      onChange={(e) => {
+                                                        const tableIdentifier = `${questionId}_table_${rowIndex}_${cellIndex}`
                                                         handleAnswerChange(
-                                                          tableAnswersKey, // <– asosiy kalit
-                                                          { ...tableAnswers, [cellKey]: e.target.value }, // yangilangan qiymat
+                                                          questionId,
+                                                          {
+                                                            ...tableAnswers,
+                                                            [cellKey]: e.target.value,
+                                                          },
+                                                          tableIdentifier,
                                                         )
-                                                      }
+                                                      }}
                                                       className="inline-block w-32 text-sm bg-white border-2 border-black focus:border-black text-center"
                                                       placeholder={inputQuestionNumber.toString()}
                                                     />
@@ -2152,7 +2390,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
                                 return Object.entries(rowsData).map(([position, coords]: [string, any], index) => {
                                   const dropZoneQuestionId = `${question.id}_map_${position}`
-                                  const currentAnswer = answers[dropZoneQuestionId]
+                                  const currentAnswer = answers[question.id]?.[position]
                                   const questionNum = questionStartNum + index
 
                                   let selectedOptionText = ""
@@ -2182,7 +2420,8 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                         e.currentTarget.classList.remove("bg-blue-200", "scale-110")
                                         const optionKey = e.dataTransfer.getData("text/plain")
                                         if (optionKey) {
-                                          handleAnswerChange(dropZoneQuestionId, optionKey, dropZoneQuestionId)
+                                          const dropZoneQuestionId = `${question.id}_map_${position}`
+                                          handleAnswerChange(question.id.toString(), optionKey, dropZoneQuestionId)
                                         }
                                       }}
                                     >
@@ -2271,8 +2510,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                       }
                                     }
                                     const isUsed = Object.keys(rowsData).some((position) => {
-                                      const dropZoneQuestionId = `${question.id}_map_${position}`
-                                      return answers[dropZoneQuestionId] === option.key
+                                      return answers[question.id]?.[position] === option.key
                                     })
 
                                     return !isUsed
@@ -2312,8 +2550,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                     }
                                   }
                                   const isUsed = Object.keys(rowsData).some((position) => {
-                                    const dropZoneQuestionId = `${question.id}_map_${position}`
-                                    return answers[dropZoneQuestionId] === option.key
+                                    return answers[question.id]?.[position] === option.key
                                   })
                                   return !isUsed
                                 }).length === 0 && (
@@ -2414,13 +2651,17 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                                     const optionKey = e.dataTransfer.getData("text/plain")
                                                     if (optionKey) {
                                                       const fullQuestionId = `${question.id}_flow_${stepNum}`
-                                                      handleAnswerChange(flowChartQuestionId, optionKey, fullQuestionId)
+                                                      handleAnswerChange(
+                                                        question.id.toString(),
+                                                        optionKey,
+                                                        fullQuestionId,
+                                                      )
                                                     }
                                                   }}
                                                   onClick={() => {
                                                     if (currentAnswer) {
                                                       const fullQuestionId = `${question.id}_flow_${stepNum}`
-                                                      handleAnswerChange(flowChartQuestionId, null, fullQuestionId)
+                                                      handleAnswerChange(question.id.toString(), null, fullQuestionId)
                                                     }
                                                   }}
                                                 >
@@ -2465,7 +2706,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                               <h4 className="font-semibold text-gray-900 mb-2" style={{ fontSize: `${textSize}px` }}>
                                 Options
                               </h4>
-                              <div className="space-y-1">
+                              <div className="space-y-2">
                                 {question.options &&
                                   Array.isArray(question.options) &&
                                   question.options
@@ -2538,7 +2779,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                           item.question_type === "NOTE_COMPLETION" &&
                                           item.l_questionsID === question.id &&
                                           item.answer &&
-                                          item.answer[(currentInputIndex - 1).toString()],
+                                          item.answer[currentInputIndex.toString()],
                                       )
 
                                       return (
@@ -2748,7 +2989,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                       draggable
                                       onDragStart={(e) => handleDragStart(e, choice)}
                                       onDragEnd={handleDragEnd}
-                                      className={`border border-gray-400 rounded-md px-3 py-2 text-center cursor-move transition-all hover:shadow-md ${
+                                      className={`border border-gray-400 rounded-md px-3 py-2 text-center cursor-move transition-all hover:border-[#4B61D1] hover:shadow ${
                                         draggedItem === choice ? "opacity-60 bg-gray-100" : "bg-white"
                                       }`}
                                     >

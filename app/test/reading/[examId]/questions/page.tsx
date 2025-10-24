@@ -73,6 +73,8 @@ interface Question {
   instructions?: string
   passage?: string
   order?: number
+  labels?: any[]
+  answers?: Record<string, string>
 }
 
 interface Passage {
@@ -1425,11 +1427,65 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     })
 
     let count = 0
+
     for (const questionGroup of partQuestions) {
       if (questionGroup.r_questions && questionGroup.r_questions.length > 0) {
-        count += questionGroup.r_questions.length
+        questionGroup.r_questions.forEach((question) => {
+          const questionId = `${questionGroup.id}_${question.id}`
+
+          if (question.q_type === "TABLE_COMPLETION") {
+            // Count empty cells in table
+            if (question.rows && Array.isArray(question.rows)) {
+              question.rows.forEach((row) => {
+                if (row.cells && Array.isArray(row.cells)) {
+                  row.cells.forEach((cell) => {
+                    if (cell === "" || cell === "_") {
+                      count++
+                    }
+                  })
+                }
+              })
+            } else if (question.table_structure?.rows) {
+              question.table_structure.rows.forEach((row) => {
+                Object.entries(row).forEach(([cellKey, cellValue]) => {
+                  if (cellValue === "" || cellValue === "_") {
+                    count++
+                  }
+                })
+              })
+            }
+          } else if (question.q_type === "MCQ_MULTI") {
+            // Count number of correct answers
+            count += question.correct_answers?.length || 1
+          } else if (question.q_type === "MATCHING_INFORMATION") {
+            // Count number of rows
+            count += (question as any).rows?.length || 1
+          } else if (question.q_type === "MATCHING_HEADINGS") {
+            // Count number of answers in the answers object
+            count += Object.keys(question.answers || {}).length
+          } else if (question.q_type === "NOTE_COMPLETION") {
+            // Count number of blanks
+            const blankCount = (question.q_text?.match(/____+/g) || []).length
+            count += blankCount
+          } else if (question.q_type === "SENTENCE_COMPLETION" || question.q_type === "SUMMARY_COMPLETION") {
+            // Count number of blanks or inputs
+            const blankCount = (question.q_text?.match(/____+/g) || []).length
+            count += blankCount > 0 ? blankCount : 1
+          } else if (question.q_type === "DIAGRAM_LABELING") {
+            // Count number of labels
+            count += (question as any).labels?.length || 1
+          } else if (question.q_type === "FLOW_CHART_COMPLETION") {
+            // Count number of blanks in flow chart
+            const blankCount = (question.q_text?.match(/____+/g) || []).length
+            count += blankCount > 0 ? blankCount : 1
+          } else {
+            // For other question types (MCQ, TRUE_FALSE_NOT_GIVEN, etc.)
+            count++
+          }
+        })
       }
     }
+
     return count
   }
 
@@ -1544,15 +1600,14 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   e.preventDefault()
                   e.currentTarget.classList.remove("border-blue-500", "bg-blue-50")
                   if (draggedOption) {
-                    // Use the index from the split parts to determine the gap number
-                    const gapIndex = index // If split by _ _, the index corresponds to the gap number - 1
-                    const matchingKey = `matching_${gapIndex}` // Match the numbering scheme used in fetchTestData
+                    const gapIndex = index
+                    const matchingKey = `matching_${gapIndex}`
 
                     setMatchingAnswers((prev) => ({
                       ...prev,
                       [questionId]: {
                         ...(prev[questionId] || {}),
-                        [gapIndex + 1]: draggedOption.key, // Store with 1-based index for consistency if needed elsewhere
+                        [gapIndex + 1]: draggedOption.key,
                       },
                     }))
 
@@ -1566,9 +1621,32 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   {getQuestionNumber(questionId) + index}
                 </span>
                 {matchingAnswers[questionId]?.[index + 1] ? (
-                  <span className={`font-medium text-base ${colorStyles.text}`}>
-                    {matchingAnswers[questionId][index + 1]}
-                  </span>
+                  <div className="flex items-center justify-between w-full">
+                    <span className={`font-medium text-base ${colorStyles.text}`}>
+                      {matchingAnswers[questionId][index + 1]}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const gapIndex = index
+                        const matchingKey = `matching_${gapIndex}`
+
+                        setMatchingAnswers((prev) => {
+                          const updated = { ...prev }
+                          if (updated[questionId]) {
+                            delete updated[questionId][gapIndex + 1]
+                          }
+                          return updated
+                        })
+
+                        handleAnswerChange(matchingKey, "")
+                      }}
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full p-1 transition-colors"
+                      title="Remove answer"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 ) : (
                   <span className="text-gray-400 text-sm">Drop heading here</span>
                 )}
@@ -1756,7 +1834,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               if (index < parts.length - 1) {
                 elements.push(
                   <span key={`input-${index}`} className="inline-flex items-center mx-1">
-                    <span className="bg-gray-500 text-white px-1.5 py-0.5 rounded text-xs font-medium mr-1">
+                    <span className="bg-gray-700 text-white px-1.5 py-0.5 rounded text-xs font-medium mr-1">
                       {questionNum}
                     </span>
                     <Input
@@ -1798,581 +1876,669 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
   const renderQuestions = (partNumber: number) => {
     const partQuestions = getQuestionsForPart(partNumber)
-    return partQuestions.map((questionGroup) => (
-      <div
-        key={questionGroup.id}
-        className={`space-y-6 p-6 rounded-lg border-b ${colorStyles.border} last:border-b-0`}
-        style={{ fontSize: `${textSize}px` }}
-      >
-        {(questionGroup.title || questionGroup.instruction) && (
-          <div className="mb-6">
-            {questionGroup.title && (
-              <h3 className={`text-xl font-bold mb-3 ${colorStyles.text}`}>{questionGroup.title}</h3>
-            )}
-            {questionGroup.instruction && (
-              <div>
-                <div className={`text-2xl font-bold mb-3 ${colorStyles.text}`}>
-                  Questions {(() => {
-                    const range = getQuestionGroupRange(questionGroup)
-                    return range.start === range.end ? range.start : `${range.start}–${range.end}`
-                  })()}
+    return partQuestions
+      .filter((questionGroup) => {
+        const hasMatchingHeadings = questionGroup.r_questions?.some((q) => q.q_type === "MATCHING_HEADINGS")
+        return !hasMatchingHeadings
+      })
+      .map((questionGroup) => (
+        <div
+          key={questionGroup.id}
+          className={`space-y-6 p-6 rounded-lg border-b ${colorStyles.border} last:border-b-0`}
+          style={{ fontSize: `${textSize}px` }}
+        >
+          {(questionGroup.title || questionGroup.instruction) && (
+            <div className="mb-6">
+              {questionGroup.title && (
+                <h3 className={`text-xl font-bold mb-3 ${colorStyles.text}`}>{questionGroup.title}</h3>
+              )}
+              {questionGroup.instruction && (
+                <div>
+                  <div className={`text-2xl font-bold mb-3 ${colorStyles.text}`}>
+                    Questions {(() => {
+                      const range = getQuestionGroupRange(questionGroup)
+                      return range.start === range.end ? range.start : `${range.start}–${range.end}`
+                    })()}
+                  </div>
+                  <div
+                    className={`text-base leading-relaxed ${colorStyles.text}`}
+                    dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                  />
                 </div>
-                <div
-                  className={`text-base leading-relaxed ${colorStyles.text}`}
-                  dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
-                />
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
 
-        {questionGroup.r_questions?.map((question) => {
-          const questionId = `${questionGroup.id}_${question.id}`
-          const currentAnswer = answers[questionId]
+          {questionGroup.r_questions?.map((question) => {
+            const questionId = `${questionGroup.id}_${question.id}`
+            const currentAnswer = answers[questionId]
 
-          if (question.q_type === "SUMMARY_COMPLETION") {
-            return null
-          }
+            if (question.q_type === "SUMMARY_COMPLETION") {
+              return null
+            }
 
-          return (
-            <div key={question.id} id={`question-${questionGroup.id}_${question.id}`} className="space-y-4">
-              {question.q_type !== "MCQ_MULTI" &&
-              question.q_type !== "MATCHING_HEADINGS" &&
-              question.q_type !== "MATCHING_INFORMATION" &&
-              question.q_type !== "TFNG" &&
-              question.q_type !== "TRUE_FALSE_NOT_GIVEN" &&
-              question.q_type !== "MCQ_SINGLE" &&
-              question.q_type !== "NOTE_COMPLETION" &&
-              question.q_type !== "TABLE_COMPLETION" ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
-                      {(() => {
-                        const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+            return (
+              <div key={question.id} id={`question-${questionGroup.id}_${question.id}`} className="space-y-4">
+                {(question.q_type !== "MCQ_MULTI" &&
+                  question.q_type !== "MATCHING_HEADINGS" &&
+                  question.q_type !== "MATCHING_INFORMATION" &&
+                  question.q_type !== "TFNG" &&
+                  question.q_type !== "TRUE_FALSE_NOT_GIVEN" &&
+                  question.q_type !== "MCQ_SINGLE" &&
+                  question.q_type !== "NOTE_COMPLETION" &&
+                  question.q_type !== "TABLE_COMPLETION" &&
+                  question.q_type !== "DIAGRAM_LABELING" &&
+                  question.q_type !== "FLOW_CHART_COMPLETION") ||
+                question.q_text ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
+                        {(() => {
+                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
 
-                        if (question.q_type === "TABLE_COMPLETION") {
-                          let inputCount = 0
-                          if (question.rows && Array.isArray(question.rows)) {
-                            question.rows.forEach((row) => {
-                              if (row.cells && Array.isArray(row.cells)) {
-                                row.cells.forEach((cell) => {
-                                  if (cell === "" || cell === "_") {
+                          if (question.q_type === "TABLE_COMPLETION") {
+                            let inputCount = 0
+                            if (question.rows && Array.isArray(question.rows)) {
+                              question.rows.forEach((row) => {
+                                if (row.cells && Array.isArray(row.cells)) {
+                                  row.cells.forEach((cell) => {
+                                    if (cell === "" || cell === "_") {
+                                      inputCount++
+                                    }
+                                  })
+                                }
+                              })
+                            } else if (question.table_structure?.rows) {
+                              question.table_structure.rows.forEach((row) => {
+                                Object.values(row).forEach((value) => {
+                                  if (value === "" || value === "_") {
                                     inputCount++
                                   }
                                 })
-                              }
-                            })
-                          } else if (question.table_structure?.rows) {
-                            question.table_structure.rows.forEach((row) => {
-                              Object.values(row).forEach((value) => {
-                                if (value === "" || value === "_") {
-                                  inputCount++
-                                }
                               })
-                            })
+                            }
+                            const endNum = startNum + inputCount - 1
+                            return inputCount > 1 ? `${startNum}–${endNum}` : startNum
+                          } else if (question.q_type === "NOTE_COMPLETION") {
+                            const blankCount = (question.q_text?.match(/____+/g) || []).length
+                            const endNum = startNum + blankCount - 1
+                            return blankCount > 1 ? `${startNum}–${endNum}` : startNum
+                          } else if (question.q_type === "DIAGRAM_LABELING") {
+                            const labelsCount = (question as any).labels?.length || 1
+                            const endNum = startNum + labelsCount - 1
+                            return labelsCount > 1 ? `${startNum}–${endNum}` : startNum
+                          } else if (question.q_type === "FLOW_CHART_COMPLETION") {
+                            const blankCount = (question.q_text?.match(/____+/g) || []).length
+                            const endNum = startNum + blankCount - 1
+                            return blankCount > 1 ? `${startNum}–${endNum}` : startNum
                           }
-                          const endNum = startNum + inputCount - 1
-                          return inputCount > 1 ? `${startNum}–${endNum}` : startNum
-                        } else if (question.q_type === "NOTE_COMPLETION") {
-                          const blankCount = (question.q_text?.match(/____+/g) || []).length
-                          const endNum = startNum + blankCount - 1
-                          return blankCount > 1 ? `${startNum}–${endNum}` : startNum
-                        }
 
-                        return startNum
-                      })()}
-                    </span>
+                          return startNum
+                        })()}
+                      </span>
+                    </div>
+                    {question.q_text && (
+                      <div
+                        className={`text-lg font-medium ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
                   </div>
-                  {question.q_text && (
+                ) : null}
+
+                {(question.q_type === "NOTE_COMPLETION" ||
+                  question.q_type === "TABLE_COMPLETION" ||
+                  question.q_type === "DIAGRAM_LABELING" ||
+                  question.q_type === "FLOW_CHART_COMPLETION") &&
+                  question.q_text && (
                     <div
                       className={`text-lg font-medium ${colorStyles.text}`}
                       dangerouslySetInnerHTML={{ __html: question.q_text }}
                     />
                   )}
-                </div>
-              ) : null}
 
-              {(question.q_type === "NOTE_COMPLETION" || question.q_type === "TABLE_COMPLETION") && question.q_text && (
-                <div
-                  className={`text-lg font-medium ${colorStyles.text}`}
-                  dangerouslySetInnerHTML={{ __html: question.q_text }}
-                />
-              )}
+                {(question.q_type === "TFNG" || question.q_type === "TRUE_FALSE_NOT_GIVEN") && (
+                  <div className="space-y-[2px] mb-[6px]">
+                    <div className="flex items-start gap-2 mb-[2px]">
+                      <span className="flex-shrink-0 inline-flex items-center justify-center min-w-[28px] h-[20px] px-1.5 text-[13px] font-semibold text-black border border-[#4B61D1] bg-white rounded-sm">
+                        {getQuestionNumber(`${questionGroup.id}_${question.id}`)}
+                      </span>
+                      {question.q_text && (
+                        <div
+                          className="text-[15px] text-gray-900 font-normal leading-tight flex-1"
+                          dangerouslySetInnerHTML={{ __html: question.q_text }}
+                        />
+                      )}
+                    </div>
 
-              {(question.q_type === "TFNG" || question.q_type === "TRUE_FALSE_NOT_GIVEN") && (
-                <div className="space-y-[2px] mb-[6px]">
-                  <div className="flex items-start gap-2 mb-[2px]">
-                    <span className="flex-shrink-0 inline-flex items-center justify-center min-w-[28px] h-[20px] px-1.5 text-[13px] font-semibold text-black border border-[#4B61D1] bg-white rounded-sm">
-                      {getQuestionNumber(`${questionGroup.id}_${question.id}`)}
-                    </span>
-                    {question.q_text && (
-                      <div
-                        className="text-[15px] text-gray-900 font-normal leading-tight flex-1"
-                        dangerouslySetInnerHTML={{ __html: question.q_text }}
-                      />
-                    )}
-                  </div>
-
-                  <div className="space-y-[1px] ml-[36px] mt-[1px]">
-                    {["TRUE", "FALSE", "NOT GIVEN"].map((label, index) => {
-                      const value = ["A", "B", "C"][index]
-                      const isSelected = currentAnswer === value
-
-                      return (
-                        <label
-                          key={value}
-                          htmlFor={`q${question.id}-${value}`}
-                          onClick={() => handleAnswerChange(questionId, value)}
-                          className={`flex items-center gap-2 cursor-pointer select-none px-[2px] py-[1px] rounded-md transition-all duration-100 ${
-                            isSelected ? "bg-blue-50" : "hover:bg-gray-50"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            id={`q${question.id}-${value}`}
-                            name={`q${question.id}`}
-                            value={value}
-                            checked={isSelected}
-                            onChange={() => handleAnswerChange(questionId, value)}
-                            className="peer relative w-[16px] h-[16px] rounded-full border border-black appearance-none cursor-pointer bg-white transition-all duration-150
-                checked:before:content-[''] checked:before:absolute checked:before:top-[3px] checked:before:left-[3px]
-                checked:before:w-[8px] checked:before:h-[8px] checked:before:bg-[#4B61D1] checked:before:rounded-full"
-                          />
-
-                          <span className="text-[15px] text-gray-900 leading-tight">{label}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {question.q_type === "MCQ_SINGLE" && question.options && (
-                <div className="space-y-[2px] mb-[6px]">
-                  <div className="flex items-start gap-2 mb-[2px]">
-                    <span className="flex-shrink-0 inline-flex items-center justify-center min-w-[28px] h-[20px] px-1.5 text-[13px] font-semibold text-black border border-[#4B61D1] bg-white rounded-sm">
-                      {getQuestionNumber(`${questionGroup.id}_${question.id}`)}
-                    </span>
-                    {question.q_text && (
-                      <div
-                        className="text-[15px] text-gray-900 font-normal leading-tight flex-1"
-                        dangerouslySetInnerHTML={{ __html: question.q_text }}
-                      />
-                    )}
-                  </div>
-
-                  <div className="space-y-[1px] ml-[36px] mt-[1px]">
-                    {question.options.map((option) => {
-                      const isSelected = currentAnswer === option.key
-                      return (
-                        <label
-                          key={option.key}
-                          htmlFor={`q${question.id}-${option.key}`}
-                          onClick={() => handleAnswerChange(questionId, option.key)}
-                          className={`flex items-center gap-2 cursor-pointer select-none px-[2px] py-[1px] rounded-md transition-all duration-100 ${
-                            isSelected ? "bg-blue-50" : "hover:bg-gray-50"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            id={`q${question.id}-${option.key}`}
-                            name={`q${question.id}`}
-                            value={option.key}
-                            checked={isSelected}
-                            onChange={() => handleAnswerChange(questionId, option.key)}
-                            className="peer relative w-[16px] h-[16px] rounded-full border border-black appearance-none cursor-pointer bg-white transition-all duration-150
-                checked:before:content-[''] checked:before:absolute checked:before:top-[3px] checked:before:left-[3px]
-                checked:before:w-[8px] checked:before:h-[8px] checked:before:bg-[#4B61D1] checked:before:rounded-full"
-                          />
-
-                          <span
-                            className="text-[15px] text-gray-900 leading-tight"
-                            dangerouslySetInnerHTML={{ __html: option.text }}
-                          />
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {question.q_type === "MCQ_MULTI" && question.options && (
-                <div className="space-y-[2px] mb-[8px] ml-[20px]">
-                  {(() => {
-                    const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-                    const correctCount = question.correct_answers?.length || 1
-                    const subQuestions: Array<{ start: number; end: number; text: string }> = []
-                    const qTexts = question.q_text?.split(/\n\n+/) || []
-
-                    if (qTexts.length > 1) {
-                      qTexts.forEach((text, index) => {
-                        const subStart = startNum + index * correctCount
-                        const subEnd = subStart + correctCount - 1
-                        subQuestions.push({ start: subStart, end: subEnd, text: text.trim() })
-                      })
-                    } else {
-                      subQuestions.push({
-                        start: startNum,
-                        end: startNum + correctCount - 1,
-                        text: question.q_text || "",
-                      })
-                    }
-
-                    return (
-                      <>
-                        {subQuestions.map((subQ, idx) => (
-                          <div key={idx} className="space-y-3">
-                            <div className="flex items-start gap-3">
-                              <span className="border-2 border-blue-500 bg-white text-gray-900 font-semibold text-[14px] px-[6px] py-[1px] rounded-[4px]">
-                                {subQ.start}–{subQ.end}
-                              </span>
-                              {subQ.text && (
-                                <div
-                                  className="text-[15px] text-gray-900 font-semibold flex-1 leading-snug"
-                                  dangerouslySetInnerHTML={{ __html: subQ.text }}
-                                />
-                              )}
-                            </div>
-
-                            <div className="space-y-1 ml-[30px]">
-                              {question.options.map((option, index) => {
-                                const isSelected = Array.isArray(currentAnswer) && currentAnswer.includes(option.key)
-
-                                return (
-                                  <label
-                                    key={index}
-                                    htmlFor={`q${question.id}-${idx}-${option.key}`}
-                                    onClick={() => {
-                                      const currentAnswers = Array.isArray(currentAnswer) ? currentAnswer : []
-                                      if (isSelected) {
-                                        // Always allow deselection
-                                        const newAnswers = currentAnswers.filter((a) => a !== option.key)
-                                        handleAnswerChange(questionId, newAnswers)
-                                      } else if (currentAnswers.length < correctCount) {
-                                        // Only allow selection if under the limit
-                                        const newAnswers = [...currentAnswers, option.key]
-                                        handleAnswerChange(questionId, newAnswers)
-                                      }
-                                      // If at limit and trying to select, do nothing (user must deselect first)
-                                    }}
-                                    className="flex items-center gap-3 cursor-pointer select-none px-[3px] py-[1px] rounded-md transition-all duration-100 hover:bg-gray-50"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      id={`q${question.id}-${idx}-${option.key}`}
-                                      checked={isSelected}
-                                      readOnly
-                                      className="peer relative w-[16px] h-[16px] rounded-[3px] border border-black appearance-none cursor-pointer bg-white transition-all duration-150
-                          checked:before:content-[''] checked:before:absolute checked:before:top-[3px] checked:before:left-[3px]
-                          checked:before:w-[8px] checked:before:h-[8px] checked:before:bg-[#4B61D1] checked:before:rounded-[1px]"
-                                    />
-                                    <span
-                                      className="text-[14px] text-gray-900 leading-tight"
-                                      dangerouslySetInnerHTML={{ __html: option.text }}
-                                    />
-                                  </label>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    )
-                  })()}
-                </div>
-              )}
-              {question.q_type === "NOTE_COMPLETION" && question.options && (
-                <div className="space-y-1">
-                  <div className={`rounded-lg p-3 leading-[2.4] ${colorStyles.cardBg}`}>
-                    {(() => {
-                      const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-
-                      const optionsText =
-                        typeof question.options === "string" ? question.options : JSON.stringify(question.options)
-
-                      // h1 elementlarini ajratamiz
-                      const parts = optionsText.split(/(<h1>.*?<\/h1>)/g)
-                      let currentInputIndex = 0
-
-                      return parts.map((part, index) => {
-                        // Agar <h1> bo'lsa, markazda chiqaramiz
-                        if (/<h1>.*?<\/h1>/.test(part)) {
-                          const headingText = part.replace(/<\/?h1>/g, "").trim()
-                          return (
-                            <div key={index} className={`text-center my-6 font-bold text-[22px] ${colorStyles.text}`}>
-                              {headingText}
-                            </div>
-                          )
-                        }
-
-                        // Text ichidagi bo'sh joylarni (____) inputlarga aylantiramiz
-                        const textParts = part.split(/(____+)/)
+                    <div className="space-y-[1px] ml-[36px] mt-[1px]">
+                      {["TRUE", "FALSE", "NOT GIVEN"].map((label, index) => {
+                        const value = ["A", "B", "C"][index]
+                        const isSelected = currentAnswer === value
 
                         return (
-                          <div key={index} className="my-3">
-                            {textParts.map((subPart, subIndex) => {
-                              if (subPart.match(/____+/)) {
-                                const questionNum = questionStartNum + currentInputIndex
-                                const inputId = `${questionGroup.id}_${question.id}_note_${currentInputIndex}`
-                                const currentAnswer = answers[inputId] || ""
-                                const currentIndex = currentInputIndex
-                                currentInputIndex++
+                          <label
+                            key={value}
+                            htmlFor={`q${question.id}-${value}`}
+                            onClick={() => handleAnswerChange(questionId, value)}
+                            className={`flex items-center gap-2 cursor-pointer select-none px-[2px] py-[1px] rounded-md transition-all duration-100 ${
+                              isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              id={`q${question.id}-${value}`}
+                              name={`q${question.id}`}
+                              value={value}
+                              checked={isSelected}
+                              onChange={() => handleAnswerChange(questionId, value)}
+                              className="peer relative w-[16px] h-[16px] rounded-full border border-black appearance-none cursor-pointer bg-white transition-all duration-150
+                checked:before:content-[''] checked:before:absolute checked:before:top-[3px] checked:before:left-[3px]
+                checked:before:w-[8px] checked:before:h-[8px] checked:before:bg-[#4B61D1] checked:before:rounded-full"
+                            />
 
-                                return (
-                                  <span
-                                    key={`${index}_${subIndex}`}
-                                    className="inline-flex items-center mx-[4px] align-middle"
-                                  >
-                                    <Input
-                                      type="text"
-                                      value={currentAnswer}
-                                      onChange={(e) =>
-                                        handleNoteCompletionChange(
-                                          questionGroup.id.toString(),
-                                          question.id.toString(),
-                                          currentIndex,
-                                          e.target.value,
-                                        )
-                                      }
-                                      placeholder={questionNum.toString()}
-                                      className={`inline-block w-[150px] px-3 py-[3px] text-center text-sm
+                            <span className="text-[15px] text-gray-900 leading-tight">{label}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {question.q_type === "MCQ_SINGLE" && question.options && (
+                  <div className="space-y-[2px] mb-[6px]">
+                    <div className="flex items-start gap-2 mb-[2px]">
+                      <span className="flex-shrink-0 inline-flex items-center justify-center min-w-[28px] h-[20px] px-1.5 text-[13px] font-semibold text-black border border-[#4B61D1] bg-white rounded-sm">
+                        {getQuestionNumber(`${questionGroup.id}_${question.id}`)}
+                      </span>
+                      {question.q_text && (
+                        <div
+                          className="text-[15px] text-gray-900 font-normal leading-tight flex-1"
+                          dangerouslySetInnerHTML={{ __html: question.q_text }}
+                        />
+                      )}
+                    </div>
+
+                    <div className="space-y-[1px] ml-[36px] mt-[1px]">
+                      {question.options.map((option) => {
+                        const isSelected = currentAnswer === option.key
+                        return (
+                          <label
+                            key={option.key}
+                            htmlFor={`q${question.id}-${option.key}`}
+                            onClick={() => handleAnswerChange(questionId, option.key)}
+                            className={`flex items-center gap-2 cursor-pointer select-none px-[2px] py-[1px] rounded-md transition-all duration-100 ${
+                              isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              id={`q${question.id}-${option.key}`}
+                              name={`q${question.id}`}
+                              value={option.key}
+                              checked={isSelected}
+                              onChange={() => handleAnswerChange(questionId, option.key)}
+                              className="peer relative w-[16px] h-[16px] rounded-full border border-black appearance-none cursor-pointer bg-white transition-all duration-150
+                checked:before:content-[''] checked:before:absolute checked:before:top-[3px] checked:before:left-[3px]
+                checked:before:w-[8px] checked:before:h-[8px] checked:before:bg-[#4B61D1] checked:before:rounded-full"
+                            />
+
+                            <span
+                              className="text-[15px] text-gray-900 leading-tight"
+                              dangerouslySetInnerHTML={{ __html: option.text }}
+                            />
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {question.q_type === "MCQ_MULTI" && question.options && (
+                  <div className="space-y-[2px] mb-[8px] ml-[20px]">
+                    {(() => {
+                      const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                      const correctCount = question.correct_answers?.length || 1
+                      const subQuestions: Array<{ start: number; end: number; text: string }> = []
+                      const qTexts = question.q_text?.split(/\n\n+/) || []
+
+                      if (qTexts.length > 1) {
+                        qTexts.forEach((text, index) => {
+                          const subStart = startNum + index * correctCount
+                          const subEnd = subStart + correctCount - 1
+                          subQuestions.push({ start: subStart, end: subEnd, text: text.trim() })
+                        })
+                      } else {
+                        subQuestions.push({
+                          start: startNum,
+                          end: startNum + correctCount - 1,
+                          text: question.q_text || "",
+                        })
+                      }
+
+                      return (
+                        <>
+                          {subQuestions.map((subQ, idx) => (
+                            <div key={idx} className="space-y-3">
+                              <div className="flex items-start gap-3">
+                                <span className="border-2 border-blue-500 bg-white text-gray-900 font-semibold text-[14px] px-[6px] py-[1px] rounded-[4px]">
+                                  {subQ.start}–{subQ.end}
+                                </span>
+                                {subQ.text && (
+                                  <div
+                                    className="text-[15px] text-gray-900 font-semibold flex-1 leading-snug"
+                                    dangerouslySetInnerHTML={{ __html: subQ.text }}
+                                  />
+                                )}
+                              </div>
+
+                              <div className="space-y-1 ml-[30px]">
+                                {question.options.map((option, index) => {
+                                  const isSelected = Array.isArray(currentAnswer) && currentAnswer.includes(option.key)
+
+                                  return (
+                                    <label
+                                      key={index}
+                                      htmlFor={`q${question.id}-${idx}-${option.key}`}
+                                      onClick={() => {
+                                        const currentAnswers = Array.isArray(currentAnswer) ? currentAnswer : []
+                                        if (isSelected) {
+                                          // Always allow deselection
+                                          const newAnswers = currentAnswers.filter((a) => a !== option.key)
+                                          handleAnswerChange(questionId, newAnswers)
+                                        } else if (currentAnswers.length < correctCount) {
+                                          // Only allow selection if under the limit
+                                          const newAnswers = [...currentAnswers, option.key]
+                                          handleAnswerChange(questionId, newAnswers)
+                                        }
+                                        // If at limit and trying to select, do nothing (user must deselect first)
+                                      }}
+                                      className="flex items-center gap-3 cursor-pointer select-none px-[3px] py-[1px] rounded-md transition-all duration-100 hover:bg-gray-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        id={`q${question.id}-${idx}-${option.key}`}
+                                        checked={isSelected}
+                                        readOnly
+                                        className="peer relative w-[16px] h-[16px] rounded-[3px] border border-black appearance-none cursor-pointer bg-white transition-all duration-150
+                          checked:before:content-[''] checked:before:absolute checked:before:top-[3px] checked:before:left-[3px]
+                          checked:before:w-[8px] checked:before:h-[8px] checked:before:bg-[#4B61D1] checked:before:rounded-[1px]"
+                                      />
+                                      <span
+                                        className="text-[14px] text-gray-900 leading-tight"
+                                        dangerouslySetInnerHTML={{ __html: option.text }}
+                                      />
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
+                {question.q_type === "NOTE_COMPLETION" && question.options && (
+                  <div className="space-y-1">
+                    <div className={`rounded-lg p-3 leading-[2.4] ${colorStyles.cardBg}`}>
+                      {(() => {
+                        const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+
+                        const optionsText =
+                          typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+
+                        // h1 elementlarini ajratamiz
+                        const parts = optionsText.split(/(<h1>.*?<\/h1>)/g)
+                        let currentInputIndex = 0
+
+                        return parts.map((part, index) => {
+                          // Agar <h1> bo'lsa, markazda chiqaramiz
+                          if (/<h1>.*?<\/h1>/.test(part)) {
+                            const headingText = part.replace(/<\/?h1>/g, "").trim()
+                            return (
+                              <div key={index} className={`text-center my-6 font-bold text-[22px] ${colorStyles.text}`}>
+                                {headingText}
+                              </div>
+                            )
+                          }
+
+                          // Text ichidagi bo'sh joylarni (____) inputlarga aylantiramiz
+                          const textParts = part.split(/(____+)/)
+
+                          return (
+                            <div key={index} className="my-3">
+                              {textParts.map((subPart, subIndex) => {
+                                if (subPart.match(/____+/)) {
+                                  const questionNum = questionStartNum + currentInputIndex
+                                  const inputId = `${questionGroup.id}_${question.id}_note_${currentInputIndex}`
+                                  const currentAnswer = answers[inputId] || ""
+                                  const currentIndex = currentInputIndex
+                                  currentInputIndex++
+
+                                  return (
+                                    <span
+                                      key={`${index}_${subIndex}`}
+                                      className="inline-flex items-center mx-[4px] align-middle"
+                                    >
+                                      <Input
+                                        type="text"
+                                        value={currentAnswer}
+                                        onChange={(e) =>
+                                          handleNoteCompletionChange(
+                                            questionGroup.id.toString(),
+                                            question.id.toString(),
+                                            currentIndex,
+                                            e.target.value,
+                                          )
+                                        }
+                                        placeholder={questionNum.toString()}
+                                        className={`inline-block w-[150px] px-3 py-[3px] text-center text-sm
                                    bg-white border-2 border-black rounded-[4px]
                                    focus:outline-none focus:ring-[1px] focus:ring-[#4B61D1] focus:border-[#4B61D1]
                                    placeholder-gray-400 transition-all duration-150 ${colorStyles.text}`}
+                                      />
+                                    </span>
+                                  )
+                                } else {
+                                  return (
+                                    <span
+                                      key={`${index}_${subIndex}`}
+                                      className={`${colorStyles.text} leading-relaxed`}
+                                      style={{ fontSize: `${textSize}px` }}
+                                      dangerouslySetInnerHTML={{ __html: subPart }}
                                     />
-                                  </span>
-                                )
-                              } else {
+                                  )
+                                }
+                              })}
+                            </div>
+                          )
+                        })
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {question.q_type === "TABLE_COMPLETION" && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border-2 border-black">
+                      <tbody>
+                        {question.rows?.map((row: any, rowIndex: number) => (
+                          <tr key={rowIndex}>
+                            {row.cells?.map((cell: string, cellIndex: number) => {
+                              const isEmptyOrUnderscore = cell === "" || cell === "_"
+                              const hasUnderscores = typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+
+                              if (isEmptyOrUnderscore || hasUnderscores) {
+                                const tableAnswersKey = `${questionId}_answer`
+                                const tableAnswers = answers[tableAnswersKey] || {}
+                                const cellKey = `${rowIndex}_${cellIndex}`
+
+                                // Har bir input uchun placeholder nomerini hisoblash
+                                const inputQuestionNumber = getQuestionNumber(questionId) // Start with the base question number
+                                let currentCellIndex = 0
+
+                                // Iterate through rows and cells to find the correct sequential number
+                                question.rows?.forEach((r: any, rIndex: number) => {
+                                  r.cells?.forEach((c: string, cIndex: number) => {
+                                    if (rIndex < rowIndex || (rIndex === rowIndex && cIndex < cellIndex)) {
+                                      if (c === "" || c === "_" || (typeof c === "string" && /_+/.test(c))) {
+                                        currentCellIndex++
+                                      }
+                                    }
+                                  })
+                                })
+
+                                const finalQuestionNumber = inputQuestionNumber + currentCellIndex
+
                                 return (
-                                  <span
-                                    key={`${index}_${subIndex}`}
-                                    className={`${colorStyles.text} leading-relaxed`}
-                                    style={{ fontSize: `${textSize}px` }}
-                                    dangerouslySetInnerHTML={{ __html: subPart }}
-                                  />
+                                  <td key={cellIndex} className="border-2 border-black p-2">
+                                    <div className="min-w-[150px]">
+                                      {hasUnderscores ? (
+                                        <div className="flex flex-wrap items-center gap-1">
+                                          {cell.split(/(_+)/).map((part: string, partIndex: number) => {
+                                            if (/_+/.test(part)) {
+                                              return (
+                                                <Input
+                                                  key={partIndex}
+                                                  value={tableAnswers[cellKey] || ""}
+                                                  onChange={(e) =>
+                                                    handleAnswerChange(tableAnswersKey, {
+                                                      ...tableAnswers,
+                                                      [cellKey]: e.target.value,
+                                                    })
+                                                  }
+                                                  className="inline-block text-black w-32 text-sm bg-white border-2 border-black focus:border-black text-center"
+                                                  placeholder={finalQuestionNumber.toString()}
+                                                />
+                                              )
+                                            }
+                                            return part ? (
+                                              <span key={partIndex} className="text-gray-900 font-bold">
+                                                {part}
+                                              </span>
+                                            ) : null
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <Input
+                                          value={tableAnswers[cellKey] || ""}
+                                          onChange={(e) =>
+                                            handleAnswerChange(tableAnswersKey, {
+                                              ...tableAnswers,
+                                              [cellKey]: e.target.value,
+                                            })
+                                          }
+                                          className="w-full text-sm bg-white  text-black border-2 border-black focus:border-black text-center"
+                                          placeholder={finalQuestionNumber.toString()}
+                                        />
+                                      )}
+                                    </div>
+                                  </td>
                                 )
                               }
-                            })}
-                          </div>
-                        )
-                      })
-                    })()}
-                  </div>
-                </div>
-              )}
-
-              {question.q_type === "TABLE_COMPLETION" && (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse border-2 border-black">
-                    <tbody>
-                      {question.rows?.map((row: any, rowIndex: number) => (
-                        <tr key={rowIndex}>
-                          {row.cells?.map((cell: string, cellIndex: number) => {
-                            const isEmptyOrUnderscore = cell === "" || cell === "_"
-                            const hasUnderscores = typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
-
-                            if (isEmptyOrUnderscore || hasUnderscores) {
-                              const tableAnswersKey = `${questionId}_answer`
-                              const tableAnswers = answers[tableAnswersKey] || {}
-                              const cellKey = `${rowIndex}_${cellIndex}`
-
-                              // Har bir input uchun placeholder nomerini hisoblash
-                              const inputQuestionNumber = getQuestionNumber(questionId) // Start with the base question number
-                              let currentCellIndex = 0
-
-                              // Iterate through rows and cells to find the correct sequential number
-                              question.rows?.forEach((r: any, rIndex: number) => {
-                                r.cells?.forEach((c: string, cIndex: number) => {
-                                  if (rIndex < rowIndex || (rIndex === rowIndex && cIndex < cellIndex)) {
-                                    if (c === "" || c === "_" || (typeof c === "string" && /_+/.test(c))) {
-                                      currentCellIndex++
-                                    }
-                                  }
-                                })
-                              })
-
-                              const finalQuestionNumber = inputQuestionNumber + currentCellIndex
 
                               return (
                                 <td key={cellIndex} className="border-2 border-black p-2">
-                                  <div className="min-w-[150px]">
-                                    {hasUnderscores ? (
-                                      <div className="flex flex-wrap items-center gap-1">
-                                        {cell.split(/(_+)/).map((part: string, partIndex: number) => {
-                                          if (/_+/.test(part)) {
-                                            return (
-                                              <Input
-                                                key={partIndex}
-                                                value={tableAnswers[cellKey] || ""}
-                                                onChange={(e) =>
-                                                  handleAnswerChange(tableAnswersKey, {
-                                                    ...tableAnswers,
-                                                    [cellKey]: e.target.value,
-                                                  })
-                                                }
-                                                className="inline-block text-black w-32 text-sm bg-white border-2 border-black focus:border-black text-center"
-                                                placeholder={finalQuestionNumber.toString()}
-                                              />
-                                            )
-                                          }
-                                          return part ? (
-                                            <span key={partIndex} className="text-gray-900 font-bold">
-                                              {part}
-                                            </span>
-                                          ) : null
-                                        })}
-                                      </div>
-                                    ) : (
-                                      <Input
-                                        value={tableAnswers[cellKey] || ""}
-                                        onChange={(e) =>
-                                          handleAnswerChange(tableAnswersKey, {
-                                            ...tableAnswers,
-                                            [cellKey]: e.target.value,
-                                          })
-                                        }
-                                        className="w-full text-sm bg-white  text-black border-2 border-black focus:border-black text-center"
-                                        placeholder={finalQuestionNumber.toString()}
-                                      />
-                                    )}
-                                  </div>
+                                  <span className="text-gray-900 font-bold">{cell}</span>
                                 </td>
                               )
-                            }
-
-                            return (
-                              <td key={cellIndex} className="border-2 border-black p-2">
-                                <span className="text-gray-900 font-bold">{cell}</span>
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {question.q_type === "MATCHING_INFORMATION" && question.rows && question.choices && (
-                <div className="space-y-5">
-                  {/* Instruction bo'lsa, tepada chiqadi */}
-                  {/* questionStartNum and questionEndNum are undeclared, so removed them */}
-
-                  {/* Jadval (asosiy qismlar) */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-2 border-black text-base">
-                      <thead>
-                        <tr className="bg-gray-100 border-b-2 border-black">
-                          <th
-                            className="p-2 text-left font-bold text-black border-r-2 border-black"
-                            style={{ fontSize: `${textSize}px` }}
-                          >
-                            Questions {(() => {
-                              const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-                              const questionEndNum = getQuestionGroupRange(questionGroup).end
-                              return questionStartNum === questionEndNum
-                                ? questionStartNum
-                                : `${questionStartNum}–${questionEndNum}`
-                            })()}
-                          </th>
-                          {Object.keys(question.choices).map((choiceKey) => (
-                            <th
-                              key={choiceKey}
-                              className="p-2 text-center font-bold text-black border-l-2 border-black w-14"
-                              style={{ fontSize: `${textSize * 0.95}px` }}
-                            >
-                              {choiceKey}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {question.rows.map((rowText, index) => {
-                          const questionNum = getQuestionNumber(`${questionGroup.id}_${question.id}`) + index
-                          const inputName = `${questionGroup.id}_${question.id}_row_${index}`
-                          const selected = answers[inputName]
-
-                          return (
-                            <tr
-                              key={index}
-                              className="border-b-2 border-black hover:bg-blue-50 transition-all duration-150"
-                            >
-                              {/* Chap ustun (raqam + matn) */}
-                              <td className="border-r-2 border-black p-2 text-black font-semibold">
-                                <div className="flex items-center gap-2">
-                                  <span className="bg-white border-2 border-[#4B61D1] text-gray-900 w-6 h-6 rounded flex items-center justify-center text-xs font-bold">
-                                    {questionNum}
-                                  </span>
-                                  <span
-                                    className="text-gray-900 leading-tight"
-                                    style={{ fontSize: `${textSize * 0.95}px` }}
-                                    dangerouslySetInnerHTML={{ __html: rowText }}
-                                  />
-                                </div>
-                              </td>
-
-                              {/* Variantlar (A, B, C ...) */}
-                              {Object.keys(question.choices).map((choiceKey) => (
-                                <td key={choiceKey} className="border-l-2 border-black p-2 text-center">
-                                  <input
-                                    type="radio"
-                                    name={inputName}
-                                    value={choiceKey}
-                                    checked={selected === choiceKey}
-                                    onChange={(e) => handleAnswerChange(inputName, e.target.value)}
-                                    className="w-4 h-4 accent-[#4B61D1] cursor-pointer"
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          )
-                        })}
+                            })}
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
+                )}
 
-                  {/* Choices (pastdagi legend jadvali) */}
-                  <div className="mt-5">
-                    <h5 className="font-bold mb-2 text-black" style={{ fontSize: `${textSize}px` }}>
-                      {question.q_text ? <span dangerouslySetInnerHTML={{ __html: question.q_text }} /> : "Choices:"}
-                    </h5>
+                {question.q_type === "MATCHING_INFORMATION" && question.rows && question.choices && (
+                  <div className="space-y-5">
+                    {/* Instruction bo'lsa, tepada chiqadi */}
+                    {/* questionStartNum and questionEndNum are undeclared, so removed them */}
 
+                    {/* Jadval (asosiy qismlar) */}
                     <div className="overflow-x-auto">
                       <table className="w-full border-2 border-black text-base">
-                        <tbody>
-                          {Object.entries(question.choices).map(([key, text]) => (
-                            <tr
-                              key={key}
-                              className="border-b-2 border-black hover:bg-blue-50 transition-all duration-150"
+                        <thead>
+                          <tr className="bg-gray-100 border-b-2 border-black">
+                            <th
+                              className="p-2 text-left font-bold text-black border-r-2 border-black"
+                              style={{ fontSize: `${textSize}px` }}
                             >
-                              <td
-                                className="border-r-2 border-black p-2 w-14 text-center font-bold bg-white text-black"
+                              Questions {(() => {
+                                const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                                const questionEndNum = getQuestionGroupRange(questionGroup).end
+                                return questionStartNum === questionEndNum
+                                  ? questionStartNum
+                                  : `${questionStartNum}–${questionEndNum}`
+                              })()}
+                            </th>
+                            {Object.keys(question.choices).map((choiceKey) => (
+                              <th
+                                key={choiceKey}
+                                className="p-2 text-center font-bold text-black border-l-2 border-black w-14"
                                 style={{ fontSize: `${textSize * 0.95}px` }}
                               >
-                                {key}
-                              </td>
-                              <td
-                                className="border-l-2 border-black p-2 text-black font-semibold"
-                                style={{ fontSize: `${textSize * 0.95}px` }}
+                                {choiceKey}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {question.rows.map((rowText, index) => {
+                            const questionNum = getQuestionNumber(`${questionGroup.id}_${question.id}`) + index
+                            const inputName = `${questionGroup.id}_${question.id}_row_${index}`
+                            const selected = answers[inputName]
+
+                            return (
+                              <tr
+                                key={index}
+                                className="border-b-2 border-black hover:bg-blue-50 transition-all duration-150"
                               >
-                                <span dangerouslySetInnerHTML={{ __html: text as string }} />
-                              </td>
-                            </tr>
-                          ))}
+                                {/* Chap ustun (raqam + matn) */}
+                                <td className="border-r-2 border-black p-2 text-black font-semibold">
+                                  <div className="flex items-center gap-2">
+                                    <span className="bg-white border-2 border-[#4B61D1] text-gray-900 w-6 h-6 rounded flex items-center justify-center text-xs font-bold">
+                                      {questionNum}
+                                    </span>
+                                    <span
+                                      className="text-gray-900 leading-tight"
+                                      style={{ fontSize: `${textSize * 0.95}px` }}
+                                      dangerouslySetInnerHTML={{ __html: rowText }}
+                                    />
+                                  </div>
+                                </td>
+
+                                {/* Variantlar (A, B, C ...) */}
+                                {Object.keys(question.choices).map((choiceKey) => (
+                                  <td key={choiceKey} className="border-l-2 border-black p-2 text-center">
+                                    <input
+                                      type="radio"
+                                      name={inputName}
+                                      value={choiceKey}
+                                      checked={selected === choiceKey}
+                                      onChange={(e) => handleAnswerChange(inputName, e.target.value)}
+                                      className="w-4 h-4 accent-[#4B61D1] cursor-pointer"
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
 
-        {renderSummaryCompletion(questionGroup)}
-      </div>
-    ))
+                    {/* Choices (pastdagi legend jadvali) */}
+                    <div className="mt-5">
+                      <h5 className="font-bold mb-2 text-black" style={{ fontSize: `${textSize}px` }}>
+                        {question.q_text ? <span dangerouslySetInnerHTML={{ __html: question.q_text }} /> : "Choices:"}
+                      </h5>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-2 border-black text-base">
+                          <tbody>
+                            {Object.entries(question.choices).map(([key, text]) => (
+                              <tr
+                                key={key}
+                                className="border-b-2 border-black hover:bg-blue-50 transition-all duration-150"
+                              >
+                                <td
+                                  className="border-r-2 border-black p-2 w-14 text-center font-bold bg-white text-black"
+                                  style={{ fontSize: `${textSize * 0.95}px` }}
+                                >
+                                  {key}
+                                </td>
+                                <td
+                                  className="border-l-2 border-black p-2 text-black font-semibold"
+                                  style={{ fontSize: `${textSize * 0.95}px` }}
+                                >
+                                  <span dangerouslySetInnerHTML={{ __html: text as string }} />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Diagram Labeling */}
+                {question.q_type === "DIAGRAM_LABELING" && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
+                        {(() => {
+                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                          const labelsCount = (question as any).labels?.length || 1
+                          const endNum = startNum + labelsCount - 1
+                          return labelsCount > 1 ? `${startNum}–${endNum}` : startNum
+                        })()}
+                      </span>
+                    </div>
+                    {question.q_text && (
+                      <div
+                        className={`text-lg font-medium ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
+                    {question.photo && (
+                      <img
+                        src={question.photo || "/placeholder.svg"}
+                        alt="Diagram"
+                        className="max-w-full h-auto rounded-lg shadow-md"
+                      />
+                    )}
+                    {(question as any).labels?.map((label: { id: string; text: string }, index: number) => {
+                      const labelQuestionId = `${questionId}_label_${label.id}`
+                      const currentLabelAnswer = answers[labelQuestionId] || ""
+                      return (
+                        <div key={label.id} className="flex items-center gap-3">
+                          <span className="bg-gray-700 text-white px-2.5 py-1 rounded text-sm font-bold shrink-0">
+                            {getQuestionNumber(`${questionGroup.id}_${question.id}`) + index}
+                          </span>
+                          <Input
+                            value={currentLabelAnswer}
+                            onChange={(e) => handleAnswerChange(labelQuestionId, e.target.value)}
+                            className={`flex-1 text-sm bg-white text-black border-2 border-black focus:border-black ${colorStyles.inputBg}`}
+                            placeholder="Enter label"
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Flow Chart Completion */}
+                {question.q_type === "FLOW_CHART_COMPLETION" && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-gray-500 text-white px-3 py-1.5 rounded text-lg font-bold">
+                        {(() => {
+                          const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                          const blankCount = (question.q_text?.match(/____+/g) || []).length
+                          const endNum = startNum + blankCount - 1
+                          return blankCount > 1 ? `${startNum}–${endNum}` : startNum
+                        })()}
+                      </span>
+                    </div>
+                    {question.q_text && (
+                      <div
+                        className={`text-lg font-medium ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {renderSummaryCompletion(questionGroup)}
+        </div>
+      ))
   }
 
   const getCurrentPartForQuestion = (questionGroupId: string): number => {
@@ -2607,35 +2773,56 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                 const { questionGroup, question, questionId } = matchingDetails
 
+                const answerCount = Object.keys(question.options || {}).length
+
                 return (
                   <div className={`mb-8 p-6 border rounded-lg ${colorStyles.cardBg} ${colorStyles.border}`}>
-                    <div className="mb-4">
-                      <div className={`text-sm font-semibold mb-2 text-gray-500`}>
-                        Questions {(() => {
-                          const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-                          const questionEndNum = getQuestionGroupRange(questionGroup).end
-                          return questionStartNum === questionEndNum
-                            ? questionStartNum
-                            : `${questionStartNum}–${questionEndNum}`
-                        })()}
-                      </div>
+                    <div className={`text-2xl font-bold mb-3 ${colorStyles.text}`}>
+                      Questions {(() => {
+                        const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                        const endNum = questionStartNum + answerCount - 1
+                        return questionStartNum === endNum ? questionStartNum : `${questionStartNum}–${endNum}`
+                      })()}
                     </div>
+
+                    {questionGroup.instruction && (
+                      <div
+                        className={`text-base leading-relaxed mb-6 ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                      />
+                    )}
+
+                    {question.q_text && question.q_text !== "-" && (
+                      <div
+                        className={`text-lg font-medium mb-4 ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
 
                     <h3 className={`text-lg font-bold ${colorStyles.text} mb-4`}>List of Headings</h3>
 
                     <div className="space-y-3">
-                      {question.options?.map((option) => (
-                        <div
-                          key={option.key}
-                          draggable
-                          onDragStart={() => setDraggedOption({ key: option.key, text: option.text })}
-                          onDragEnd={() => setDraggedOption(null)}
-                          className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-move transition-all hover:border-blue-400 hover:shadow-md ${colorStyles.cardBg} ${colorStyles.border}`}
-                        >
-                          <span className="font-bold text-blue-600 shrink-0 mt-0.5">{option.key}</span>
-                          <span className={`text-base leading-relaxed ${colorStyles.text}`}>{option.text}</span>
-                        </div>
-                      ))}
+                      {question.options
+                        ?.filter((option) => {
+                          const isPlaced = Object.values(matchingAnswers[questionId] || {}).includes(option.key)
+                          return !isPlaced
+                        })
+                        .map((option) => {
+                          return (
+                            <div
+                              key={option.key}
+                              draggable={true}
+                              onDragStart={() => {
+                                setDraggedOption({ key: option.key, text: option.text })
+                              }}
+                              onDragEnd={() => setDraggedOption(null)}
+                              className={`flex items-start gap-3 p-4 border-2 rounded-lg transition-all cursor-move hover:border-blue-400 hover:shadow-md border-blue-300 ${colorStyles.border} ${colorStyles.cardBg}`}
+                            >
+                              <span className="font-bold text-blue-600 shrink-0 mt-0.5">{option.key}</span>
+                              <span className={`text-base leading-relaxed ${colorStyles.text}`}>{option.text}</span>
+                            </div>
+                          )
+                        })}
                     </div>
                   </div>
                 )
