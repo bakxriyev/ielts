@@ -133,6 +133,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   const [draggedOption, setDraggedOption] = useState<{ key: string; text: string } | null>(null)
   const [matchingAnswers, setMatchingAnswers] = useState<Record<string, Record<number, string>>>({})
 
+  const [summaryDragAnswers, setSummaryDragAnswers] = useState<Record<string, Record<number, string>>>({})
+
   const [allQuestions, setAllQuestions] = React.useState<Array<{ id: string; groupId: string; part: number }>>([])
   const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0)
 
@@ -393,6 +395,14 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else {
                   currentQNum++
                 }
+              } else if (question.q_type === "SUMMARY_DRAG") {
+                numbers[questionId] = currentQNum
+                const blankCount = (question.options?.match(/___+/g) || []).length
+                if (blankCount > 0) {
+                  currentQNum += blankCount
+                } else {
+                  currentQNum++
+                }
               } else {
                 numbers[questionId] = currentQNum
                 currentQNum++
@@ -466,6 +476,14 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               } else if (question.q_type === "SENTENCE_COMPLETION") {
                 numbers[questionId] = currentQNum
                 const blankCount = (question.q_text?.match(/_+/g) || []).length
+                if (blankCount > 0) {
+                  currentQNum += blankCount
+                } else {
+                  currentQNum++
+                }
+              } else if (question.q_type === "SUMMARY_DRAG") {
+                numbers[questionId] = currentQNum
+                const blankCount = (question.options?.match(/___+/g) || []).length
                 if (blankCount > 0) {
                   currentQNum += blankCount
                 } else {
@@ -549,6 +567,14 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else {
                   currentQNum++
                 }
+              } else if (question.q_type === "SUMMARY_DRAG") {
+                numbers[questionId] = currentQNum
+                const blankCount = (question.options?.match(/___+/g) || []).length
+                if (blankCount > 0) {
+                  currentQNum += blankCount
+                } else {
+                  currentQNum++
+                }
               } else {
                 numbers[questionId] = currentQNum
                 currentQNum++
@@ -616,6 +642,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else if (item.question_type === "NOTE_COMPLETION") {
                   const questionId = `${item.questionId}_${item.r_questionsID}_note_${item.blankIndex}`
                   loadedAnswers[questionId] = item.answer
+                } else if (item.question_type === "SUMMARY_DRAG") {
+                  const questionId = `${item.questionId}_${item.r_questionsID}`
+                  loadedAnswers[`${questionId}_blank_${item.blankIndex}`] = item.answer
                 } else {
                   const questionId = `${item.questionId}_${item.r_questionsID}`
                   loadedAnswers[questionId] = item.answer
@@ -704,6 +733,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       rQuestionId = parts[1]
     } else if (questionId.includes("_row_")) {
       rQuestionId = parts[1]
+    } else if (questionId.includes("_blank_")) {
+      // For SUMMARY_DRAG: format is "questionGroupId_rQuestionId_blank_index"
+      rQuestionId = parts[1]
     } else {
       rQuestionId =
         parts.length > 1 &&
@@ -768,6 +800,17 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               item.questionId === Number.parseInt(questionGroupId) &&
               item.r_questionsID === Number.parseInt(rQuestionId) &&
               (item.question_type === "SENTENCE_COMPLETION" || item.question_type === "SUMMARY_COMPLETION")
+            ),
+        )
+      } else if (questionType === "SUMMARY_DRAG") {
+        const blankIndex = Number.parseInt(parts[parts.length - 1])
+        answersArray = answersArray.filter(
+          (item: any) =>
+            !(
+              item.questionId === Number.parseInt(questionGroupId) &&
+              item.r_questionsID === Number.parseInt(rQuestionId) &&
+              item.question_type === "SUMMARY_DRAG" &&
+              item.blankIndex === blankIndex
             ),
         )
       } else {
@@ -898,6 +941,28 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         examId: Number.parseInt(examIdToUse),
         question_type: questionType,
         answer: answer,
+      })
+    } else if (questionType === "SUMMARY_DRAG") {
+      // For SUMMARY_DRAG, the questionId will be like "groupId_rQuestionId_blank_index"
+      const blankIndex = Number.parseInt(parts[parts.length - 1])
+      answersArray = answersArray.filter(
+        (item: any) =>
+          !(
+            item.questionId === Number.parseInt(questionGroupId) &&
+            item.r_questionsID === Number.parseInt(rQuestionId) &&
+            item.question_type === "SUMMARY_DRAG" &&
+            item.blankIndex === blankIndex
+          ),
+      )
+
+      answersArray.push({
+        userId: getUserId(),
+        questionId: Number.parseInt(questionGroupId),
+        r_questionsID: Number.parseInt(rQuestionId),
+        examId: Number.parseInt(examIdToUse),
+        question_type: "SUMMARY_DRAG",
+        answer: answer,
+        blankIndex: blankIndex,
       })
     } else {
       answersArray = answersArray.filter(
@@ -1405,6 +1470,15 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               count++
             }
           }
+        } else if (question.q_type === "SUMMARY_DRAG") {
+          // Count answered blanks for SUMMARY_DRAG
+          const blanks = question.q_text?.match(/____+/g) || []
+          for (let i = 0; i < blanks.length; i++) {
+            const inputId = `${questionId}_blank_${i + 1}` // Note: blankIndex is 1-based in summaryDragAnswers
+            if (answers[inputId]) {
+              count++
+            }
+          }
         } else {
           if (answers[questionId]) {
             count++
@@ -1513,6 +1587,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         // Calculate range for NOTE_COMPLETION
         const blankCount = (question.q_text?.match(/____+/g) || []).length
         endNum = Math.max(endNum, currentStart + blankCount - 1)
+      } else if (question.q_type === "SUMMARY_DRAG") {
+        // Calculate range for SUMMARY_DRAG
+        const blanks = question.q_text?.match(/____+/g) || []
+        endNum = Math.max(endNum, currentStart + blanks.length - 1)
       } else {
         endNum = Math.max(endNum, currentStart)
       }
@@ -1649,7 +1727,197 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     }
   }
 
-  React.useEffect(() => {
+  const renderSummaryDrag = (questionGroup: any) => {
+    return (
+      <>
+        {(() => {
+          const summaryDragQuestions = questionGroup.r_questions?.filter((q) => q.q_type === "SUMMARY_DRAG") || []
+          if (summaryDragQuestions.length === 0) return null
+
+          return (
+            <>
+              {summaryDragQuestions.map((question) => {
+                const questionId = `${questionGroup.id}_${question.id}`
+                const startNum = getQuestionNumber(questionId)
+                const blanks = question.options?.match(/___+/g) || []
+                const endNum = startNum + blanks.length - 1
+                const questionRange = blanks.length > 1 ? `${startNum}–${endNum}` : startNum
+
+                // Parse options text to get parts and blanks
+                const parts = question.options?.split(/___+/) || []
+                const choices = question.choices || {}
+
+                // Get current answers for this question
+                const currentAnswers = summaryDragAnswers[questionId] || {}
+
+                // Get available choices (not yet placed)
+                const usedChoices = Object.values(currentAnswers)
+                const availableChoices = Object.entries(choices).filter(([key]) => !usedChoices.includes(key))
+
+                const handleDrop = (blankIndex: number, choiceKey: string) => {
+                  setSummaryDragAnswers((prev) => ({
+                    ...prev,
+                    [questionId]: {
+                      ...(prev[questionId] || {}),
+                      [blankIndex + 1]: choiceKey,
+                    },
+                  }))
+
+                  // Update answers for submission
+                  handleAnswerChange(`${questionId}_blank_${blankIndex + 1}`, choiceKey)
+                }
+
+                const handleRemove = (blankIndex: number) => {
+                  setSummaryDragAnswers((prev) => {
+                    const newAnswers = { ...(prev[questionId] || {}) }
+                    delete newAnswers[blankIndex + 1]
+                    return {
+                      ...prev,
+                      [questionId]: newAnswers,
+                    }
+                  })
+
+                  // Update answers for submission
+                  handleAnswerChange(`${questionId}_blank_${blankIndex + 1}`, "")
+                }
+
+                return (
+                  <div
+                    key={question.id}
+                    className={`mb-8 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}
+                  >
+                    <div className="text-2xl font-bold mb-2 text-black">Questions {questionRange}</div>
+
+                    {questionGroup.instruction && (
+                      <div
+                        className={`text-base leading-relaxed mb-4 ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                      />
+                    )}
+
+                    {question.q_text && question.q_text.trim() && (
+                      <div
+                        className="mb-8 text-lg font-bold text-black"
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
+
+                    <div
+                      className={`leading-relaxed mb-8 p-4 rounded-lg ${colorStyles.inputBg} ${colorStyles.border}`}
+                      style={{ fontSize: `${textSize}px` }}
+                    >
+                      {parts.map((part, index) => (
+                        <React.Fragment key={index}>
+                          <span className="text-black" dangerouslySetInnerHTML={{ __html: part }} />
+                          {index < parts.length - 1 && (
+                            <span
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                e.currentTarget.classList.add("border-blue-500", "bg-blue-100")
+                              }}
+                              onDragLeave={(e) => {
+                                e.currentTarget.classList.remove("border-blue-500", "bg-blue-100")
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                e.currentTarget.classList.remove("border-blue-500", "bg-blue-100")
+                                if (draggedOption) {
+                                  handleDrop(index, draggedOption.key)
+                                  setDraggedOption(null)
+                                }
+                              }}
+                              className="inline-flex items-center gap-2 mx-1 px-3 py-2 border-2 border-dashed border-gray-300 bg-gray-100 rounded cursor-pointer hover:bg-gray-200 transition-colors align-middle"
+                            >
+                              <span className="bg-white text-blue-600 px-2 py-0.5 rounded text-sm font-bold border border-blue-600">
+                                {startNum + index}
+                              </span>
+                              {currentAnswers[index + 1] ? (
+                                <span
+                                  draggable
+                                  onDragStart={() => {
+                                    const choiceKey = currentAnswers[index + 1]
+                                    const choiceText = choices[choiceKey]
+                                    setDraggedOption({ key: choiceKey, text: choiceText })
+                                    handleRemove(index)
+                                  }}
+                                  onDragEnd={() => setDraggedOption(null)}
+                                  className="font-medium cursor-move px-2 py-1 bg-blue-100 rounded text-black"
+                                >
+                                  {choices[currentAnswers[index + 1]]}
+                                </span>
+                              ) : (
+                                <input
+                                  type="text"
+                                  placeholder="____"
+                                  readOnly
+                                  className="w-16 px-2 py-1 border border-gray-400 rounded text-center text-black bg-white"
+                                />
+                              )}
+                            </span>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </div>
+
+                    <div>
+                      <div className="text-sm font-semibold mb-3 text-black">
+                        Choose the correct answer and move it into the gap.
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {availableChoices.map(([key, text]) => (
+                          <div
+                            key={key}
+                            draggable
+                            onDragStart={() => {
+                              setDraggedOption({ key, text: text as string })
+                            }}
+                            onDragEnd={() => setDraggedOption(null)}
+                            className="px-4 py-2 border-2 border-gray-300 rounded-lg cursor-move hover:border-blue-500 hover:bg-blue-50 transition-colors bg-white text-black font-medium"
+                            style={{ fontSize: `${textSize}px` }}
+                          >
+                            {text}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )
+        })()}
+      </>
+    )
+  }
+
+  const handleSummaryDragDrop = (questionId: string, blankIndex: number, choiceKey: string) => {
+    setSummaryDragAnswers((prev) => ({
+      ...prev,
+      [questionId]: {
+        ...(prev[questionId] || {}),
+        [blankIndex + 1]: choiceKey, // blankIndex is 0-based, so add 1 for storage
+      },
+    }))
+
+    // Update answers for submission, ensuring correct blankIndex format
+    handleAnswerChange(`${questionId}_blank_${blankIndex + 1}`, choiceKey)
+  }
+
+  const handleSummaryDragRemove = (questionId: string, blankIndex: number) => {
+    setSummaryDragAnswers((prev) => {
+      const newAnswers = { ...(prev[questionId] || {}) }
+      delete newAnswers[blankIndex + 1]
+      return {
+        ...prev,
+        [questionId]: newAnswers,
+      }
+    })
+
+    // Update answers for submission, setting to empty
+    handleAnswerChange(`${questionId}_blank_${blankIndex + 1}`, "")
+  }
+
+  useEffect(() => {
     const questionsList: Array<{ id: string; groupId: string; part: number }> = []
 
     for (let part = 1; part <= 3; part++) {
@@ -1760,64 +2028,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     }
   }
 
-  const renderSummaryCompletion = (questionGroup: any) => {
-    return (
-      <>
-        {(() => {
-          const summaryQuestions = questionGroup.r_questions?.filter((q) => q.q_type === "SUMMARY_COMPLETION") || []
-          if (summaryQuestions.length === 0) return null
-
-          const processText = (text: string, questionId: string, questionNum: number) => {
-            const parts = text.split(/_+/)
-            const elements: React.ReactNode[] = []
-
-            parts.forEach((part, index) => {
-              if (part) {
-                elements.push(<span key={`text-${index}`}>{part}</span>)
-              }
-              if (index < parts.length - 1) {
-                elements.push(
-                  <span key={`input-${index}`} className="inline-flex items-center mx-1">
-                    <span className="bg-gray-700 text-white px-1.5 py-0.5 rounded text-xs font-medium mr-1">
-                      {questionNum}
-                    </span>
-                    <Input
-                      value={answers[questionId] || ""}
-                      onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                      className={`inline-block w-48 mx-1 px-2 py-1 text-base ${colorStyles.inputBg} ${colorStyles.border} focus:border-gray-500`}
-                      style={{ fontSize: `${textSize}px` }}
-                      placeholder="..."
-                    />
-                  </span>,
-                )
-              }
-            })
-
-            return <>{elements}</>
-          }
-
-          return (
-            <div className={`mb-6 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}>
-              <div className={`leading-relaxed ${colorStyles.text}`} style={{ fontSize: `${textSize}px` }}>
-                {summaryQuestions.map((question, qIndex) => {
-                  const questionId = `${questionGroup.id}_${question.id}`
-                  const questionNum = getQuestionNumber(questionId)
-
-                  return (
-                    <span key={question.id}>
-                      {processText(question.q_text, questionId, questionNum)}
-                      {qIndex < summaryQuestions.length - 1 && " "}
-                    </span>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })()}
-      </>
-    )
-  }
-
   const renderQuestions = (partNumber: number) => {
     const partQuestions = getQuestionsForPart(partNumber)
     return partQuestions
@@ -1831,33 +2041,34 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           className={`space-y-6 p-6 rounded-lg border-b ${colorStyles.border} last:border-b-0`}
           style={{ fontSize: `${textSize}px` }}
         >
-          {(questionGroup.title || questionGroup.instruction) && (
-            <div className="mb-6">
-              {questionGroup.title && (
-                <h3 className={`text-xl font-bold mb-3 ${colorStyles.text}`}>{questionGroup.title}</h3>
-              )}
-              {questionGroup.instruction && (
-                <div>
-                  <div className={`text-2xl font-bold mb-3 ${colorStyles.text}`}>
-                    Questions {(() => {
-                      const range = getQuestionGroupRange(questionGroup)
-                      return range.start === range.end ? range.start : `${range.start}–${range.end}`
-                    })()}
+          {(questionGroup.title || questionGroup.instruction) &&
+            !questionGroup.r_questions?.some((q) => q.q_type === "SUMMARY_DRAG") && (
+              <div className="mb-6">
+                {questionGroup.title && (
+                  <h3 className={`text-xl font-bold mb-3 ${colorStyles.text}`}>{questionGroup.title}</h3>
+                )}
+                {questionGroup.instruction && (
+                  <div>
+                    <div className={`text-2xl font-bold mb-3 ${colorStyles.text}`}>
+                      Questions {(() => {
+                        const range = getQuestionGroupRange(questionGroup)
+                        return range.start === range.end ? range.start : `${range.start}–${range.end}`
+                      })()}
+                    </div>
+                    <div
+                      className={`text-base leading-relaxed ${colorStyles.text}`}
+                      dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                    />
                   </div>
-                  <div
-                    className={`text-base leading-relaxed ${colorStyles.text}`}
-                    dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
 
           {questionGroup.r_questions?.map((question) => {
             const questionId = `${questionGroup.id}_${question.id}`
             const currentAnswer = answers[questionId]
 
-            if (question.q_type === "SUMMARY_COMPLETION") {
+            if (question.q_type == "SUMMARY_COMPLETION" || question.q_type === "MAMA") {
               return null
             }
 
@@ -1870,6 +2081,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 question.q_type !== "TRUE_FALSE_NOT_GIVEN" &&
                 question.q_type !== "MCQ_SINGLE" &&
                 question.q_type !== "NOTE_COMPLETION" &&
+                question.q_type !== "SUMMARY_DRAG" &&
                 question.q_type !== "TABLE_COMPLETION" ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
@@ -1904,6 +2116,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                             const blankCount = (question.q_text?.match(/____+/g) || []).length
                             const endNum = startNum + blankCount - 1
                             return blankCount > 1 ? `${startNum}–${endNum}` : startNum
+                          } else if (question.q_type === "SUMMARY_DRAG") {
+                            const blanks = question.q_text?.match(/____+/g) || []
+                            const endNum = startNum + blanks.length - 1
+                            return blanks.length > 1 ? `${startNum}–${endNum}` : startNum
                           }
 
                           return startNum
@@ -2118,7 +2334,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                         const optionsText =
                           typeof question.options === "string" ? question.options : JSON.stringify(question.options)
 
-                        // h1 elementlarini ajratamiz
+                        // h1 elementlerini ajratamiz
                         const parts = optionsText.split(/(<h1>.*?<\/h1>)/g)
                         let currentInputIndex = 0
 
@@ -2133,7 +2349,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                             )
                           }
 
-                          // Text ichidagi bo'sh joylarni (____) inputlarga aylantiramiz
+                          // Text ichidagi bosh joylarni (____) inputlarga aylantiramiz
                           const textParts = part.split(/(____+)/)
 
                           return (
@@ -2173,7 +2389,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                 } else {
                                   return (
                                     <span
-                                      key={`${index}_${subIndex}`}
+                                      key={`${index}_subIndex`}
                                       className={`${colorStyles.text} leading-relaxed`}
                                       style={{ fontSize: `${textSize}px` }}
                                       dangerouslySetInnerHTML={{ __html: subPart }}
@@ -2394,6 +2610,147 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     </div>
                   </div>
                 )}
+
+    {question.q_type === "SUMMARY_DRAG" && question.options && (
+  <div className="space-y-4">
+    {/* Savol raqami */}
+    <div className="text-2xl font-bold mb-2 text-black">
+      Questions {(() => {
+        const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+        const blanks = question.options?.match(/___+/g) || []
+        const endNum = startNum + blanks.length - 1
+        return blanks.length > 1 ? `${startNum}–${endNum}` : startNum
+      })()}
+    </div>
+
+    {/* Instruksiya */}
+    {questionGroup.instruction && (
+      <div
+        className={`text-base leading-relaxed mb-4 ${colorStyles.text}`}
+        dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+      />
+    )}
+
+    {/* Savol matni */}
+    {question.q_text && (
+      <div
+        className={`text-lg font-medium mb-4 ${colorStyles.text}`}
+        dangerouslySetInnerHTML={{ __html: question.q_text }}
+      />
+    )}
+
+    {/* Drag-and-drop qismining asosiy konteyneri */}
+    <div
+      className={`rounded-lg p-4 text-black leading-relaxed ${colorStyles.cardBg} border border-gray-300`}
+    >
+      {(() => {
+        const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+        const optionsText =
+          typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+
+        const parts = optionsText.split(/(___+)/)
+        let currentBlankIndex = 0
+        const currentAnswers = summaryDragAnswers[questionId] || {}
+
+        return parts.map((part, index) => {
+          if (part.match(/___+/)) {
+            const questionNum = questionStartNum + currentBlankIndex
+            const blankIndex = currentBlankIndex
+            currentBlankIndex++
+
+            return (
+              <span
+                key={`${index}_blank`}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  e.currentTarget.classList.add("border-blue-500", "bg-blue-100")
+                }}
+                onDragLeave={(e) => {
+                  e.currentTarget.classList.remove("border-blue-500", "bg-blue-100")
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  e.currentTarget.classList.remove("border-blue-500", "bg-blue-100")
+                  if (draggedOption) {
+                    handleSummaryDragDrop(questionId, blankIndex, draggedOption.key)
+                    setDraggedOption(null)
+                  }
+                }}
+                className="inline-flex items-center gap-2 mx-1 px-3 py-1 border border-dashed border-gray-400 bg-gray-50 rounded-md cursor-pointer hover:bg-gray-100 transition-all align-middle min-w-[150px] h-[32px]"
+              >
+                <span className="bg-white text-blue-600 px-2 py-0.5 rounded text-sm font-bold border border-blue-600">
+                  {questionNum}
+                </span>
+
+                {currentAnswers[blankIndex + 1] ? (
+                  <span
+                    draggable
+                    onDragStart={() => {
+                      const choiceKey = currentAnswers[blankIndex + 1]
+                      const choiceText = question.choices?.[choiceKey] || ""
+                      setDraggedOption({ key: choiceKey, text: choiceText, fromBlank: true, blankIndex })
+                    }}
+                    onDragEnd={() => setDraggedOption(null)}
+                    className="font-medium cursor-move px-2 py-0.5 bg-blue-100 rounded text-black text-sm"
+                  >
+                    {question.choices?.[currentAnswers[blankIndex + 1]]}
+                  </span>
+                ) : (
+                  <div className="flex-1 h-[6px] bg-gray-300 rounded-md mx-1"></div>
+                )}
+              </span>
+            )
+          } else {
+            return <span key={index}>{part}</span>
+          }
+        })
+      })()}
+    </div>
+
+    {/* Variantlar (javoblar) qutisi */}
+    {question.choices && Object.keys(question.choices).length > 0 && (
+      <div className="mt-4">
+        <div className="text-sm font-semibold mb-3 text-black">
+          Choose the correct answer and move it into the gap.
+        </div>
+
+        <div
+          className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg min-h-[60px] bg-gray-50"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault()
+            if (draggedOption?.fromBlank) {
+              handleSummaryDragRemove(questionId, draggedOption.blankIndex)
+              setDraggedOption(null)
+            }
+          }}
+        >
+          {(() => {
+            const currentAnswers = summaryDragAnswers[questionId] || {}
+            const usedChoices = Object.values(currentAnswers)
+            const availableChoices = Object.entries(question.choices || {}).filter(
+              ([key]) => !usedChoices.includes(key)
+            )
+
+            return availableChoices.map(([key, text]) => (
+              <div
+                key={key}
+                draggable
+                onDragStart={() => setDraggedOption({ key, text })}
+                onDragEnd={() => setDraggedOption(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg bg-white text-black font-medium hover:border-blue-500 hover:bg-blue-50 transition-colors cursor-move"
+                style={{ fontSize: `${textSize}px` }}
+              >
+                {text}
+              </div>
+            ))
+          })()}
+        </div>
+      </div>
+    )}
+  </div>
+)}
+
               </div>
             )
           })}
@@ -2437,6 +2794,64 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     }
 
     return `${minutes} minutes`
+  }
+
+  const renderSummaryCompletion = (questionGroup: any) => {
+    return (
+      <>
+        {(() => {
+          const summaryQuestions = questionGroup.r_questions?.filter((q) => q.q_type === "SUMMARY_COMPLETION") || []
+          if (summaryQuestions.length === 0) return null
+
+          const processText = (text: string, questionId: string, questionNum: number) => {
+            const parts = text.split(/_+/)
+            const elements: React.ReactNode[] = []
+
+            parts.forEach((part, index) => {
+              if (part) {
+                elements.push(<span key={`text-${index}`}>{part}</span>)
+              }
+              if (index < parts.length - 1) {
+                elements.push(
+                  <span key={`input-${index}`} className="inline-flex items-center mx-[4px]">
+                    <span className="bg-gray-700 text-white px-1.5 py-0.5 rounded text-xs font-medium mr-1">
+                      {questionNum}
+                    </span>
+                    <Input
+                      value={answers[questionId] || ""}
+                      onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                      className={`inline-block w-48 mx-1 px-2 py-1 text-base ${colorStyles.inputBg} ${colorStyles.border} focus:border-gray-500`}
+                      style={{ fontSize: `${textSize}px` }}
+                      placeholder="..."
+                    />
+                  </span>,
+                )
+              }
+            })
+
+            return <>{elements}</>
+          }
+
+          return (
+            <div className={`mb-6 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}>
+              <div className={`leading-relaxed ${colorStyles.text}`} style={{ fontSize: `${textSize}px` }}>
+                {summaryQuestions.map((question, qIndex) => {
+                  const questionId = `${questionGroup.id}_${question.id}`
+                  const questionNum = getQuestionNumber(questionId)
+
+                  return (
+                    <span key={question.id}>
+                      {processText(question.q_text, questionId, questionNum)}
+                      {qIndex < summaryQuestions.length - 1 && " "}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+      </>
+    )
   }
 
   return (
@@ -2639,7 +3054,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                 return (
                   <div className={`mb-8 p-6 border rounded-lg ${colorStyles.cardBg} ${colorStyles.border}`}>
-                    <div className={`text-2xl font-bold mb-3 ${colorStyles.text}`}>
+                    <div className={`text-2xl font-bold ${colorStyles.text}`}>
                       Questions {(() => {
                         const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
                         const endNum = questionStartNum + answerCount - 1
@@ -2930,27 +3345,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               </button>,
                             )
                           }
-                        } else if (question.q_type === "SUMMARY_COMPLETION") {
-                          const blanks = question.q_text?.match(/_+/g) || []
-                          const isAnswered = !!answers[questionId]
-
-                          // Each blank is a separate question, so create one button
-                          questionButtons.push(
-                            <button
-                              key={questionId}
-                              onClick={() => {
-                                scrollToQuestion(questionId)
-                                setIsMobileMenuOpen(false)
-                              }}
-                              className={`w-7 h-7 text-xs font-medium rounded transition-colors ${
-                                isAnswered
-                                  ? "bg-green-500 text-white hover:bg-green-600"
-                                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                              }`}
-                            >
-                              {startNum}
-                            </button>,
-                          )
                         } else if (question.q_type === "NOTE_COMPLETION") {
                           // Add buttons for NOTE_COMPLETION
                           const blanks = question.q_text?.match(/____+/g) || []
@@ -3193,6 +3587,28 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                   questionButtons.push(
                                     <button
                                       key={`${questionId}_note_${index}`}
+                                      onClick={() => {
+                                        scrollToQuestion(questionId)
+                                      }}
+                                      className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
+                                        isAnswered
+                                          ? "bg-green-500 text-white hover:bg-green-600"
+                                          : "bg-gray-300 text-gray-700 hover:bg-gray-400"
+                                      }`}
+                                    >
+                                      {startNum + index}
+                                    </button>,
+                                  )
+                                })
+                              } else if (question.q_type === "SUMMARY_DRAG") {
+                                // Add buttons for SUMMARY_DRAG
+                                const blanks = question.q_text?.match(/____+/g) || []
+                                blanks.forEach((_, index) => {
+                                  const inputId = `${questionId}_blank_${index + 1}` // Note: blankIndex is 1-based
+                                  const isAnswered = !!answers[inputId]
+                                  questionButtons.push(
+                                    <button
+                                      key={`${questionId}_blank_${index + 1}`}
                                       onClick={() => {
                                         scrollToQuestion(questionId)
                                       }}
