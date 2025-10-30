@@ -165,7 +165,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     } catch (error) {
       console.error("[v0] Error parsing user data from localStorage:", error)
     }
-    return "null"
+    return "1"
   }
 
   const [userId, setUserId] = useState<string>(() => getUserId())
@@ -680,26 +680,40 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else if (item.blankIndex !== undefined && item.question_type !== "NOTE_COMPLETION") {
                   const questionId = `${item.questionId}_${item.r_questionsID}_summary_${item.blankIndex}`
                   loadedAnswers[questionId] = item.answer
-                } else if (item.question_type === "SENTENCE_COMPLETION") {
+                } else if (
+                  item.question_type === "SENTENCE_COMPLETION" ||
+                  item.question_type === "SUMMARY_COMPLETION"
+                ) {
                   const questionId = `${item.questionId}_${item.r_questionsID}`
                   loadedAnswers[questionId] = item.answer
                 } else if (item.question_type === "NOTE_COMPLETION") {
-                  const questionId = `${item.questionId}_${item.r_questionsID}_note_${item.blankIndex}`
-                  loadedAnswers[questionId] = item.answer
+                  // Handle new format: answer is {"1": "value"}
+                  const questionId = `${item.questionId}_${item.r_questionsID}`
+                  if (item.answer && typeof item.answer === "object") {
+                    Object.entries(item.answer).forEach(([blankNum, value]) => {
+                      const blankIndex = Number.parseInt(blankNum) - 1 // Convert 1-indexed to 0-indexed
+                      const fullQuestionId = `${questionId}_note_${blankIndex}`
+                      loadedAnswers[fullQuestionId] = value
+                    })
+                  }
                 } else if (item.question_type === "SUMMARY_DRAG") {
                   const questionId = `${item.questionId}_${item.r_questionsID}`
                   loadedAnswers[`${questionId}_blank_${item.blankIndex}`] = item.answer
-                  // Load SENTENCE_ENDINGS answers
                 } else if (item.question_type === "SENTENCE_ENDINGS") {
                   const questionId = `${item.questionId}_${item.r_questionsID}`
-                  loadedAnswers[`${questionId}_option_${item.blankIndex}`] = item.answer
-                  setSentenceEndingsAnswers((prev) => ({
-                    ...prev,
-                    [questionId]: {
-                      ...(prev[questionId] || {}),
-                      [item.blankIndex]: item.answer,
-                    },
-                  }))
+                  // Assuming item.answer is an object like {"2": "C"}
+                  if (item.answer && typeof item.answer === "object") {
+                    Object.entries(item.answer).forEach(([optionKey, value]) => {
+                      loadedAnswers[`${questionId}_option_${optionKey}`] = value
+                      setSentenceEndingsAnswers((prev) => ({
+                        ...prev,
+                        [questionId]: {
+                          ...(prev[questionId] || {}),
+                          [optionKey]: value,
+                        },
+                      }))
+                    })
+                  }
                 } else {
                   const questionId = `${item.questionId}_${item.r_questionsID}`
                   loadedAnswers[questionId] = item.answer
@@ -791,7 +805,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       answersArray = []
     }
 
-    // Handle SENTENCE_ENDINGS answer saving with separate keys
     if (questionType === "SENTENCE_ENDINGS" && optionKey) {
       // Remove existing answer for this specific option
       answersArray = answersArray.filter(
@@ -800,7 +813,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             item.questionId === Number.parseInt(questionGroupId) &&
             item.r_questionsID === Number.parseInt(rQuestionId) &&
             item.question_type === "SENTENCE_ENDINGS" &&
-            item.blankIndex === optionKey
+            item.answer &&
+            typeof item.answer === "object" &&
+            item.answer[optionKey]
           ),
       )
 
@@ -812,8 +827,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           r_questionsID: Number.parseInt(rQuestionId),
           examId: Number.parseInt(examIdToUse),
           question_type: "SENTENCE_ENDINGS",
-          answer: answer,
-          blankIndex: optionKey, // Store as "1", "2", "3", etc.
+          answer: { [optionKey]: answer }, // Store as {"2": "C"}
         })
       }
 
@@ -1141,63 +1155,65 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     localStorage.setItem(answersKey, JSON.stringify(answersArray))
   }
 
-  const handleNoteCompletionChange = (
-    questionGroupId: string,
-    rQuestionId: string,
-    inputIndex: number,
-    value: string,
-  ) => {
-    const inputId = `${questionGroupId}_${rQuestionId}_note_${inputIndex}`
-
-    // Update UI immediately
+  const handleNoteCompletionChange = (inputId: string, value: string) => {
     setAnswers((prev) => ({
       ...prev,
       [inputId]: value,
     }))
 
-    // Clear existing timeout for this input
     if (noteCompletionDebounce[inputId]) {
       clearTimeout(noteCompletionDebounce[inputId])
     }
 
-    // Set new timeout to save after user stops typing
     const timeoutId = setTimeout(() => {
-      const answersKey = `answers_${examId}_reading_${userId}`
-      const existingAnswers = localStorage.getItem(answersKey)
-      let answersArray: any[] = []
+      const currentUserId = getUserId()
+      if (!currentUserId) return
 
+      const parts = inputId.split("_")
+      const questionGroupId = parts[0]
+      const rQuestionId = parts[1]
+      const blankNumber = parts[parts.length - 1] // This is the blank index (0, 1, 2, etc.)
+
+      const examIdToUse = backendExamId || examId
+      const answersKey = `answers_${examIdToUse}_reading_${currentUserId}`
+
+      let answersArray: any[] = []
       try {
+        const existingAnswers = localStorage.getItem(answersKey)
         if (existingAnswers) {
-          const parsed = JSON.parse(existingAnswers) // Corrected from JSON.JSON.parse
-          answersArray = Array.isArray(parsed) ? parsed : []
+          answersArray = JSON.parse(existingAnswers)
+          if (!Array.isArray(answersArray)) {
+            answersArray = []
+          }
         }
       } catch (error) {
-        console.log("[v0] Error parsing localStorage answers:", error)
+        console.error("[v0] Error parsing existing answers:", error)
         answersArray = []
       }
 
-      const examIdToUse = backendExamId || examId
-
-      // Remove existing answer for this specific input
+      // Remove existing answer for this specific blank
       answersArray = answersArray.filter(
         (item: any) =>
           !(
             item.questionId === Number.parseInt(questionGroupId) &&
             item.r_questionsID === Number.parseInt(rQuestionId) &&
             item.question_type === "NOTE_COMPLETION" &&
-            item.blankIndex === inputIndex
+            item.answer &&
+            typeof item.answer === "object" &&
+            Object.keys(item.answer)[0] === (Number.parseInt(blankNumber) + 1).toString()
           ),
       )
 
-      // Add new answer if not empty
       if (value && value.trim() !== "") {
+        // Save answer in format {"1": "value"} where 1 is the blank number (1-indexed)
+        const blankNumberForAnswer = (Number.parseInt(blankNumber) + 1).toString()
         answersArray.push({
           userId: getUserId(),
           questionId: Number.parseInt(questionGroupId),
           r_questionsID: Number.parseInt(rQuestionId),
           examId: Number.parseInt(examIdToUse),
           question_type: "NOTE_COMPLETION",
-          answer: value,
+          answer: { [blankNumberForAnswer]: value },
         })
       }
 
@@ -1282,33 +1298,45 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       for (const answer of allAnswers) {
         try {
+          const payload: any = {
+            userId: currentUserId,
+            questionId: answer.questionId,
+            examId: answer.examId || Number.parseInt(examIdToUse),
+            answer: answer.answer,
+            r_questionsID: answer.r_questionsID,
+            question_type: answer.question_type,
+          }
+
+          // Only add rowIndex and blankIndex for questions that need them
+          // Exclude SENTENCE_ENDINGS and NOTE_COMPLETION from having blankIndex
+          if (answer.question_type !== "SENTENCE_ENDINGS" && answer.question_type !== "NOTE_COMPLETION") {
+            if (answer.rowIndex !== undefined) {
+              payload.rowIndex = answer.rowIndex
+            }
+            if (answer.blankIndex !== undefined) {
+              payload.blankIndex = answer.blankIndex
+            }
+          }
+
           const response = await fetch(`${apiUrl}/reading-answers`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              userId: currentUserId,
-              questionId: answer.questionId,
-              examId: answer.examId || Number.parseInt(examIdToUse),
-              answer: answer.answer,
-              r_questionsID: answer.r_questionsID,
-              question_type: answer.question_type,
-              ...(answer.rowIndex !== undefined && { rowIndex: answer.rowIndex }),
-              ...(answer.blankIndex !== undefined && { blankIndex: answer.blankIndex }),
-            }),
+            body: JSON.stringify(payload),
           })
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}))
-            failCount++
-            errors.push(`Question ${answer.questionId}: ${errorData.message || "Failed"}`)
-          } else {
-            successCount++
+            throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
           }
+
+          successCount++
         } catch (error) {
           failCount++
-          errors.push(`Question ${answer.questionId}: Network error`)
+          const errorMessage = error instanceof Error ? error.message : "Unknown error"
+          errors.push(`Question ${answer.questionId}: ${errorMessage}`)
+          console.error("[v0] Error submitting answer:", error)
         }
       }
 
@@ -2583,7 +2611,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           typeof question.options === "string"
                             ? question.options
                             : JSON.stringify(question.options || "")
-                        // h1 elementlerini ajratamiz
                         const parts = optionsText.split(/(<h1>.*?<\/h1>)/g)
                         let currentInputIndex = 0
 
@@ -2611,7 +2638,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                   const questionNum = questionStartNum + currentInputIndex
                                   const inputId = `${questionGroup.id}_${question.id}_note_${currentInputIndex}`
                                   const currentAnswer = answers[inputId] || ""
-                                  const currentIndex = currentInputIndex
                                   currentInputIndex++
 
                                   return (
@@ -2622,14 +2648,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                       <Input
                                         type="text"
                                         value={currentAnswer}
-                                        onChange={(e) =>
-                                          handleNoteCompletionChange(
-                                            questionGroup.id.toString(),
-                                            question.id.toString(),
-                                            currentIndex,
-                                            e.target.value,
-                                          )
-                                        }
+                                        onChange={(e) => handleNoteCompletionChange(inputId, e.target.value)}
                                         placeholder={questionNum.toString()}
                                         className={`inline-block w-[150px] px-3 py-[3px] text-center text-sm
                                    bg-white border-2 border-black rounded-[4px]
@@ -2786,7 +2805,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                 {/* Chap ustun (raqam + matn) */}
                                 <td className="border-r-2 border-black p-2 text-black font-semibold">
                                   <div className="flex items-center gap-2">
-                                    <span className="bg-white border-2 border-[#4B61D1] text-gray-900 w-6 h-6 rounded flex items-center justify-center text-xs font-bold">
+                                    <span className="bg-white border-2 border-[#4B61D1] text-gray-900 w-6 h-6 rounded flex items-center justify-center text-xs font-bold flex-shrink-0">
                                       {questionNum}
                                     </span>
                                     <span
