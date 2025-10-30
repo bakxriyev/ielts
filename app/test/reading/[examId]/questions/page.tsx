@@ -50,7 +50,7 @@ interface Question {
   id: string
   q_text: string
   q_type: string
-  options?: string[]
+  options?: string[] | Array<{ key: string; text: string }> // Updated to allow both formats
   correct_answer?: string
   part: string
   columns?: string[] // Added for new TABLE_COMPLETION structure
@@ -346,7 +346,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   const underscorePattern = /_{2,}/g
                   const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
                   for (let i = 0; i < matches.length; i++) {
-                    const gapQuestionId = `matching_${i}`
+                    const gapQuestionId = `matching_${i + 1}` // Changed to 1-based index
                     numbers[gapQuestionId] = currentQNum
                     currentQNum++
                   }
@@ -401,7 +401,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 }
               } else if (question.q_type === "SUMMARY_DRAG") {
                 numbers[questionId] = currentQNum
-                const blankCount = (question.options?.match(/___+/g) || []).length
+                const blankCount = (question.q_text?.match(/____+/g) || []).length
                 if (blankCount > 0) {
                   currentQNum += blankCount
                 } else {
@@ -439,7 +439,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   const underscorePattern = /_{2,}/g
                   const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
                   for (let i = 0; i < matches.length; i++) {
-                    const gapQuestionId = `matching_${i}`
+                    const gapQuestionId = `matching_${i + 1}` // Changed to 1-based index
                     numbers[gapQuestionId] = currentQNum
                     currentQNum++
                   }
@@ -494,7 +494,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 }
               } else if (question.q_type === "SUMMARY_DRAG") {
                 numbers[questionId] = currentQNum
-                const blankCount = (question.options?.match(/___+/g) || []).length
+                const blankCount = (question.q_text?.match(/____+/g) || []).length
                 if (blankCount > 0) {
                   currentQNum += blankCount
                 } else {
@@ -532,7 +532,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   const underscorePattern = /_{2,}/g
                   const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
                   for (let i = 0; i < matches.length; i++) {
-                    const gapQuestionId = `matching_${i}`
+                    const gapQuestionId = `matching_${i + 1}` // Changed to 1-based index
                     numbers[gapQuestionId] = currentQNum
                     currentQNum++
                   }
@@ -587,7 +587,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 }
               } else if (question.q_type === "SUMMARY_DRAG") {
                 numbers[questionId] = currentQNum
-                const blankCount = (question.options?.match(/___+/g) || []).length
+                const blankCount = (question.q_text?.match(/____+/g) || []).length
                 if (blankCount > 0) {
                   currentQNum += blankCount
                 } else {
@@ -628,16 +628,17 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   item.answer &&
                   typeof item.answer === "object"
                 ) {
+                  // Correctly load matching answers using 1-based indexing
                   const positionIndex = Object.keys(item.answer)[0]
                   const value = item.answer[positionIndex]
-                  const questionId = `matching_${positionIndex}`
+                  const questionId = `matching_${positionIndex}` // Use the questionId that represents the gap
                   loadedAnswers[questionId] = value
 
                   setMatchingAnswers((prev) => ({
                     ...prev,
                     [item.questionId + "_" + item.r_questionsID]: {
                       ...(prev[item.questionId + "_" + item.r_questionsID] || {}),
-                      [Number.parseInt(positionIndex)]: value,
+                      [Number.parseInt(positionIndex)]: value, // Store with 1-based index
                     },
                   }))
                 } else if (item.question_type === "MCQ_MULTI") {
@@ -652,7 +653,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   const questionId = `${item.questionId}_${item.r_questionsID}_row_${item.rowIndex}`
                   loadedAnswers[questionId] = item.answer
                 } else if (item.blankIndex !== undefined && item.question_type !== "NOTE_COMPLETION") {
-                  const questionId = `${item.questionId}_${item.r_questionsID}_summary_${item.blankIndex}`
+                  const questionId = `${item.questionId}_${item.r_questionsID}_blank_${item.blankIndex}` // Corrected blankIndex handling
                   loadedAnswers[questionId] = item.answer
                 } else if (
                   item.question_type === "SENTENCE_COMPLETION" ||
@@ -855,10 +856,12 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           (item: any) => !(item.question_type === "TABLE_COMPLETION" && item.answer && item.answer[cellPosition]),
         )
       } else if (questionId.startsWith("matching_")) {
-        const positionIndex = _parts[1]
+        // Extract the 1-based position index from the questionId
+        const positionIndex = Number.parseInt(_parts[1], 10)
         answersArray = answersArray.filter((item: any) => {
           if (item.question_type === "MATCHING_HEADINGS" && item.answer) {
-            return Object.keys(item.answer)[0] !== positionIndex
+            // Check if the answer object contains an entry for this position index
+            return item.answer[positionIndex.toString()] === undefined
           }
           return true
         })
@@ -957,11 +960,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         },
       })
     } else if (questionId.startsWith("matching_")) {
-      const positionIndex = _parts[1]
+      // Extract the 1-based position index from the questionId
+      const positionIndex = Number.parseInt(_parts[1], 10)
 
       answersArray = answersArray.filter((item: any) => {
         if (item.question_type === "MATCHING_HEADINGS" && item.answer) {
-          return Object.keys(item.answer)[0] !== positionIndex
+          // Ensure we only filter out entries that exactly match the position index
+          return item.answer[positionIndex.toString()] === undefined
         }
         return true
       })
@@ -979,7 +984,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           examId: Number.parseInt(_examIdToUse),
           question_type: "MATCHING_HEADINGS",
           answer: {
-            [positionIndex]: answer,
+            [positionIndex]: answer, // Use 1-based index here
           },
         })
       }
@@ -1274,9 +1279,12 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   }
 
   const handleSubmit = async () => {
+    console.log("[v0] handleSubmit called")
     const currentUserId = getUserId()
+    console.log("[v0] Current user ID:", currentUserId)
 
     if (isSubmitted || isSubmitting || showSubmitLoading) {
+      console.log("[v0] Submit blocked - already submitted or submitting")
       return
     }
 
@@ -1289,39 +1297,57 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       return
     }
 
+    console.log("[v0] Showing confirmation modal")
     setShowConfirmModal(true)
   }
 
   const submitAnswers = async () => {
+    console.log("[v0] submitAnswers called")
     setIsSubmitting(true)
     setShowSubmitLoading(true)
+    console.log("[v0] Loading states set to true")
 
     try {
       const currentUserId = getUserId()
-      const answersKey = `answers_${examId}_reading_${currentUserId}`
+      console.log("[v0] Current user ID:", currentUserId)
 
-      const answersData = localStorage.getItem(answersKey)
+      console.log("[v0] All localStorage keys:", Object.keys(localStorage))
+      const allAnswerKeys = Object.keys(localStorage).filter(
+        (key) => key.startsWith("answers_") && key.endsWith(`_reading_${currentUserId}`),
+      )
+      console.log("[v0] All answer keys for user:", allAnswerKeys)
 
-      if (!answersData) {
+      if (allAnswerKeys.length === 0) {
+        console.error("[v0] No answers found in localStorage for user:", currentUserId)
         throw new Error("No answers found")
       }
 
+      // Collect all answers from all matching keys
       let allAnswers: any[] = []
-      try {
-        allAnswers = JSON.parse(answersData)
-        if (!Array.isArray(allAnswers)) {
-          throw new Error("Invalid answers format")
+      for (const key of allAnswerKeys) {
+        try {
+          const answersData = localStorage.getItem(key)
+          if (answersData) {
+            const answers = JSON.parse(answersData)
+            if (Array.isArray(answers)) {
+              allAnswers = [...allAnswers, ...answers]
+              console.log("[v0] Loaded", answers.length, "answers from key:", key)
+            }
+          }
+        } catch (error) {
+          console.error("[v0] Error parsing answers from key:", key, error)
         }
-      } catch (error) {
-        console.error("[v0] Error parsing answers:", error)
-        throw new Error("Failed to parse answers")
       }
 
+      console.log("[v0] Total answers collected:", allAnswers.length)
+
       if (allAnswers.length === 0) {
+        console.error("[v0] No valid answers found")
         throw new Error("No answers found")
       }
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL
+      console.log("[v0] API URL:", apiUrl)
       if (!apiUrl) {
         console.error("[v0] API URL not configured")
         throw new Error("API URL not configured")
@@ -1332,7 +1358,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       const errors: string[] = []
 
       const examIdToUse = backendExamId || examId
+      console.log("[v0] Exam ID to use:", examIdToUse)
 
+      console.log("[v0] Starting to submit answers...")
       for (const answer of allAnswers) {
         try {
           const payload: any = {
@@ -1355,6 +1383,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             }
           }
 
+          console.log("[v0] Submitting answer:", payload)
+
           const response = await fetch(`${apiUrl}/reading-answers`, {
             method: "POST",
             headers: {
@@ -1363,12 +1393,19 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             body: JSON.stringify(payload),
           })
 
+          console.log("[v0] Response status:", response.status)
+
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}))
+            console.error("[v0] Response error:", errorData)
             throw new Error(errorData.message || `HTTP error! status: ${response.status}`)
           }
 
+          const responseData = await response.json()
+          console.log("[v0] Response data:", responseData)
+
           successCount++
+          console.log("[v0] Success count:", successCount)
         } catch (error) {
           failCount++
           const errorMessage = error instanceof Error ? error.message : "Unknown error"
@@ -1376,6 +1413,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           console.error("[v0] Error submitting answer:", error)
         }
       }
+
+      console.log("[v0] Submission complete - Success:", successCount, "Failed:", failCount)
 
       if (failCount > 0) {
         setAlert({
@@ -1386,7 +1425,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       }
 
       if (successCount > 0) {
-        localStorage.removeItem(answersKey)
+        console.log("[v0] Removing answers from localStorage")
+        for (const key of allAnswerKeys) {
+          localStorage.removeItem(key)
+          console.log("[v0] Removed key:", key)
+        }
 
         setIsSubmitted(true)
         setIsCompleted(true)
@@ -1415,15 +1458,17 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         throw new Error("All submissions failed")
       }
     } catch (error) {
+      console.error("[v0] Error in submitAnswers:", error)
       setAlert({
         title: "Submission Failed",
-        message: error instanceof Error ? error.message : "There was an error submitting your test. Please try again.",
+        message: error instanceof Error ? error.message : "Failed to submit answers. Please try again.",
         type: "error",
       })
     } finally {
       setIsSubmitting(false)
       setShowSubmitLoading(false)
       setShowConfirmModal(false)
+      console.log("[v0] Submit process completed")
     }
   }
 
@@ -1683,6 +1728,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             const underscorePattern = /_{2,}/g
             const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
             matches.forEach((_, index) => {
+              // Use 1-based indexing for matchingAnswers lookup
               if (matchingAnswers[questionId]?.[index + 1]) {
                 count++
               }
@@ -1745,7 +1791,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 // Count label inputs
                 const labelInputs = (row.label?.match(/____+/g) || []).length
                 count += labelInputs
-                // Count cell inputs
+                // Count inputs in cells
                 if (row.cells && Array.isArray(row.cells)) {
                   row.cells.forEach((cell) => {
                     const cellInputs = (cell?.match(/____+/g) || []).length
@@ -1832,8 +1878,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             const labelInputs = (row.label?.match(/____+/g) || []).length
             inputCount += labelInputs
             // Count inputs in cells
-            if (row.cells && Array.isArray(row.cells)) {
-              row.cells.forEach((cell) => {
+            if (question.cells && Array.isArray(question.cells)) {
+              question.cells.forEach((cell) => {
                 const cellInputs = (cell?.match(/____+/g) || []).length
                 inputCount += cellInputs
               })
@@ -1885,6 +1931,18 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     const parts = text.split(underscorePattern)
     const matches = [...text.matchAll(underscorePattern)]
 
+    const question = testData?.questions.flatMap((q) => q.r_questions || []).find((q) => q.id.toString() === questionId)
+
+    // Normalize options to handle both string array and object array formats
+    const normalizedOptions = question?.options
+      ? Array.isArray(question.options) && typeof question.options[0] === "string"
+        ? question.options.map((opt: string, idx: number) => ({
+            key: String.fromCharCode(65 + idx),
+            text: opt,
+          }))
+        : question.options
+      : []
+
     return (
       <div className={`text-base leading-relaxed ${colorStyles.text}`}>
         {parts.map((part, index) => (
@@ -1904,13 +1962,14 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   e.currentTarget.classList.remove("border-blue-500", "bg-blue-50")
                   if (draggedOption) {
                     const gapIndex = index
-                    const matchingKey = `matching_${gapIndex}`
+                    const positionIndex = gapIndex + 1
+                    const matchingKey = `matching_${positionIndex}`
 
                     setMatchingAnswers((prev) => ({
                       ...prev,
                       [questionId]: {
                         ...(prev[questionId] || {}),
-                        [gapIndex + 1]: draggedOption.key,
+                        [positionIndex]: draggedOption.key,
                       },
                     }))
 
@@ -1926,18 +1985,20 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 {matchingAnswers[questionId]?.[index + 1] ? (
                   <div className="flex items-center justify-between w-full">
                     <span className={`font-medium text-base ${colorStyles.text}`}>
-                      {matchingAnswers[questionId][index + 1]}
+                      {normalizedOptions.find((opt: any) => opt.key === matchingAnswers[questionId][index + 1])?.text ||
+                        matchingAnswers[questionId][index + 1]}
                     </span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
                         const gapIndex = index
-                        const matchingKey = `matching_${gapIndex}`
+                        const positionIndex = gapIndex + 1
+                        const matchingKey = `matching_${positionIndex}`
 
                         setMatchingAnswers((prev) => {
                           const updated = { ...prev }
                           if (updated[questionId]) {
-                            delete updated[questionId][gapIndex + 1]
+                            delete updated[questionId][positionIndex]
                           }
                           return updated
                         })
@@ -2020,12 +2081,12 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               {summaryDragQuestions.map((question) => {
                 const questionId = `${questionGroup.id}_${question.id}`
                 const startNum = getQuestionNumber(questionId)
-                const blanks = question.options?.match(/___+/g) || []
+                const blanks = question.q_text?.match(/____+/g) || [] // Use q_text for blanks
                 const endNum = startNum + blanks.length - 1
                 const questionRange = blanks.length > 1 ? `${startNum}–${endNum}` : startNum
 
                 // Parse options text to get parts and blanks
-                const parts = question.options?.split(/___+/) || []
+                const parts = question.q_text?.split(/____+/) || [] // Use q_text for splitting
                 const choices = question.choices || {}
 
                 // Get current answers for this question
@@ -2742,7 +2803,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           return (
                             <tr key={rowIndex}>
                               {/* Row label (first column) */}
-                              <td className="border-2 border-black p-2 bg-gray-5 text-black">
+                              <td className="border-2 border-black p-2 bg-gray-50">
                                 <div className="flex flex-wrap items-center gap-1">
                                   {row.label?.split(/(____+)/).map((part: string, partIndex: number) => {
                                     if (/____+/.test(part)) {
@@ -2764,7 +2825,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                               e.target.value,
                                             )
                                           }
-                                          className="inline-block w-24 text-sm  text-black bg-white border-2 border-black focus:border-black text-center"
+                                          className="inline-block w-24 text-sm bg-white border-2 border-black focus:border-black text-center"
                                           placeholder={inputNum.toString()}
                                         />
                                       )
@@ -2782,8 +2843,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                               {/* Data cells */}
                               {row.cells?.map((cell: string, cellIndex: number) => (
-                                <td key={cellIndex} className="border-2 border-black  text-black p-2">
-                                  <div className="flex flex-wrap items-center  text-black gap-1">
+                                <td key={cellIndex} className="border-2 border-black p-2">
+                                  <div className="flex flex-wrap items-center gap-1">
                                     {cell?.split(/(____+)/).map((part: string, partIndex: number) => {
                                       if (/____+/.test(part)) {
                                         const inputNum = currentInputNum++
@@ -2804,7 +2865,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                                 e.target.value,
                                               )
                                             }
-                                            className="inline-block w-24 text-sm  text-black bg-white border-2 border-black focus:border-black text-center"
+                                            className="inline-block w-24 text-sm bg-white border-2 border-black focus:border-black text-center"
                                             placeholder={inputNum.toString()}
                                           />
                                         )
@@ -3367,7 +3428,21 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                 const { questionGroup, question, questionId } = matchingDetails
 
-                const answerCount = Object.keys(question.options || {}).length
+                const normalizedOptions = Array.isArray(question.options)
+                  ? question.options.map((option, index) => {
+                      if (typeof option === "string") {
+                        // Convert string array to object array with letter keys
+                        return {
+                          key: String.fromCharCode(65 + index), // A, B, C, D, etc.
+                          text: option,
+                        }
+                      }
+                      // Already an object with key and text
+                      return option
+                    })
+                  : []
+
+                const answerCount = normalizedOptions.length
 
                 return (
                   <div className={`mb-8 p-6 border rounded-lg ${colorStyles.cardBg} ${colorStyles.border}`}>
@@ -3396,8 +3471,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     <h3 className={`text-lg font-bold ${colorStyles.text} mb-4`}>List of Headings</h3>
 
                     <div className="space-y-3">
-                      {question.options
-                        ?.filter((option) => {
+                      {normalizedOptions
+                        .filter((option) => {
                           const isPlaced = Object.values(matchingAnswers[questionId] || {}).includes(option.key)
                           return !isPlaced
                         })
@@ -3412,7 +3487,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               onDragEnd={() => setDraggedOption(null)}
                               className={`flex items-start gap-3 p-4 border-2 rounded-lg transition-all cursor-move hover:border-blue-400 hover:shadow-md border-blue-300 ${colorStyles.border} ${colorStyles.cardBg}`}
                             >
-                              <span className="font-bold text-blue-600 shrink-0 mt-0.5">{option.key}</span>
                               <span className={`text-base leading-relaxed ${colorStyles.text}`}>{option.text}</span>
                             </div>
                           )
@@ -3539,6 +3613,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           const selectedCount = selectedAnswers.length
 
                           for (let i = 0; i < correctCount; i++) {
+                            const isAnswered = i < selectedCount
                             questionButtons.push(
                               <button
                                 key={`${questionId}_${i}`}
@@ -3547,7 +3622,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                   setIsMobileMenuOpen(false)
                                 }}
                                 className={`w-7 h-7 text-xs font-medium rounded transition-colors ${
-                                  i < selectedCount
+                                  isAnswered
                                     ? "bg-green-500 text-white hover:bg-green-600"
                                     : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                                 }`}
@@ -3590,6 +3665,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                 key={`${questionId}_blank_${index + 1}`}
                                 onClick={() => {
                                   scrollToQuestion(questionId)
+                                  setIsMobileMenuOpen(false)
                                 }}
                                 className={`w-7 h-7 text-xs font-medium rounded transition-colors ${
                                   isAnswered
@@ -3705,12 +3781,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     const selectedCount = selectedAnswers.length
 
                     for (let i = 0; i < correctCount; i++) {
+                      const isAnswered = i < selectedCount
                       questionButtons.push(
                         <button
                           key={`${questionId}_${i}`}
                           onClick={() => scrollToQuestion(questionId)}
                           className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
-                            i < selectedCount
+                            isAnswered
                               ? "bg-green-500 text-white hover:bg-green-600"
                               : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                           }`}
