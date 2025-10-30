@@ -135,6 +135,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
   const [summaryDragAnswers, setSummaryDragAnswers] = useState<Record<string, Record<number, string>>>({})
 
+  const [sentenceEndingsAnswers, setSentenceEndingsAnswers] = useState<Record<string, Record<string, string>>>({})
+
   const [allQuestions, setAllQuestions] = React.useState<Array<{ id: string; groupId: string; part: number }>>([])
   const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0)
 
@@ -163,7 +165,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     } catch (error) {
       console.error("[v0] Error parsing user data from localStorage:", error)
     }
-    return "1"
+    return "null"
   }
 
   const [userId, setUserId] = useState<string>(() => getUserId())
@@ -395,6 +397,16 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else {
                   currentQNum++
                 }
+              } else if (question.q_type === "NOTE_COMPLETION") {
+                numbers[questionId] = currentQNum
+                const optionsText =
+                  typeof question.options === "string" ? question.options : JSON.stringify(question.options || "")
+                const blankCount = (optionsText.match(/____+/g) || []).length
+                if (blankCount > 0) {
+                  currentQNum += blankCount
+                } else {
+                  currentQNum++
+                }
               } else if (question.q_type === "SUMMARY_DRAG") {
                 numbers[questionId] = currentQNum
                 const blankCount = (question.options?.match(/___+/g) || []).length
@@ -403,6 +415,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else {
                   currentQNum++
                 }
+              } else if (question.q_type === "SENTENCE_ENDINGS") {
+                numbers[questionId] = currentQNum
+                const optionsCount = question.options ? Object.keys(question.options).length : 1
+                currentQNum += optionsCount
               } else {
                 numbers[questionId] = currentQNum
                 currentQNum++
@@ -481,6 +497,16 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else {
                   currentQNum++
                 }
+              } else if (question.q_type === "NOTE_COMPLETION") {
+                numbers[questionId] = currentQNum
+                const optionsText =
+                  typeof question.options === "string" ? question.options : JSON.stringify(question.options || "")
+                const blankCount = (optionsText.match(/____+/g) || []).length
+                if (blankCount > 0) {
+                  currentQNum += blankCount
+                } else {
+                  currentQNum++
+                }
               } else if (question.q_type === "SUMMARY_DRAG") {
                 numbers[questionId] = currentQNum
                 const blankCount = (question.options?.match(/___+/g) || []).length
@@ -489,6 +515,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else {
                   currentQNum++
                 }
+              } else if (question.q_type === "SENTENCE_ENDINGS") {
+                numbers[questionId] = currentQNum
+                const optionsCount = question.options ? Object.keys(question.options).length : 1
+                currentQNum += optionsCount
               } else {
                 numbers[questionId] = currentQNum
                 currentQNum++
@@ -567,6 +597,16 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else {
                   currentQNum++
                 }
+              } else if (question.q_type === "NOTE_COMPLETION") {
+                numbers[questionId] = currentQNum
+                const optionsText =
+                  typeof question.options === "string" ? question.options : JSON.stringify(question.options || "")
+                const blankCount = (optionsText.match(/____+/g) || []).length
+                if (blankCount > 0) {
+                  currentQNum += blankCount
+                } else {
+                  currentQNum++
+                }
               } else if (question.q_type === "SUMMARY_DRAG") {
                 numbers[questionId] = currentQNum
                 const blankCount = (question.options?.match(/___+/g) || []).length
@@ -575,6 +615,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else {
                   currentQNum++
                 }
+              } else if (question.q_type === "SENTENCE_ENDINGS") {
+                numbers[questionId] = currentQNum
+                const optionsCount = question.options ? Object.keys(question.options).length : 1
+                currentQNum += optionsCount
               } else {
                 numbers[questionId] = currentQNum
                 currentQNum++
@@ -645,6 +689,17 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 } else if (item.question_type === "SUMMARY_DRAG") {
                   const questionId = `${item.questionId}_${item.r_questionsID}`
                   loadedAnswers[`${questionId}_blank_${item.blankIndex}`] = item.answer
+                  // Load SENTENCE_ENDINGS answers
+                } else if (item.question_type === "SENTENCE_ENDINGS") {
+                  const questionId = `${item.questionId}_${item.r_questionsID}`
+                  loadedAnswers[`${questionId}_option_${item.blankIndex}`] = item.answer
+                  setSentenceEndingsAnswers((prev) => ({
+                    ...prev,
+                    [questionId]: {
+                      ...(prev[questionId] || {}),
+                      [item.blankIndex]: item.answer,
+                    },
+                  }))
                 } else {
                   const questionId = `${item.questionId}_${item.r_questionsID}`
                   loadedAnswers[questionId] = item.answer
@@ -680,6 +735,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     fetchTestData()
   }, [examId, userId]) // Added userId to dependency array
 
+  // /** CHANGE: Initialize timer on component mount only **/ // Commented out as it's already above
+  // useEffect(() => {
+  //   const initialTime = 3600 // 60 minutes in seconds
+  //   setTimeRemaining(initialTime)
+  // }, [])
+
+  // /** CHANGE: Timer logic moved to above for clarity and to avoid re-initialization **/
   // useEffect(() => {
   //   if (timeRemaining === null || timeRemaining <= 0) return
 
@@ -699,69 +761,122 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   const handleAnswerChange = (
     questionId: string,
     answer: string | string[] | Record<string, string>,
-    inputId?: string,
+    questionType?: string,
+    optionKey?: string,
   ) => {
+    const currentUserId = getUserId()
+
+    if (!currentUserId) {
+      return
+    }
+
+    const parts = questionId.split("_")
+    const questionGroupId = parts[0]
+    const rQuestionId = parts[1]
+
+    const examIdToUse = backendExamId || examId
+    const answersKey = `answers_${examIdToUse}_reading_${currentUserId}`
+
+    let answersArray: any[] = []
+    try {
+      const existingAnswers = localStorage.getItem(answersKey)
+      if (existingAnswers) {
+        answersArray = JSON.parse(existingAnswers)
+        if (!Array.isArray(answersArray)) {
+          answersArray = []
+        }
+      }
+    } catch (error) {
+      console.error("[v0] Error parsing existing answers:", error)
+      answersArray = []
+    }
+
+    // Handle SENTENCE_ENDINGS answer saving with separate keys
+    if (questionType === "SENTENCE_ENDINGS" && optionKey) {
+      // Remove existing answer for this specific option
+      answersArray = answersArray.filter(
+        (item: any) =>
+          !(
+            item.questionId === Number.parseInt(questionGroupId) &&
+            item.r_questionsID === Number.parseInt(rQuestionId) &&
+            item.question_type === "SENTENCE_ENDINGS" &&
+            item.blankIndex === optionKey
+          ),
+      )
+
+      // Add new answer if not empty
+      if (answer) {
+        answersArray.push({
+          userId: getUserId(),
+          questionId: Number.parseInt(questionGroupId),
+          r_questionsID: Number.parseInt(rQuestionId),
+          examId: Number.parseInt(examIdToUse),
+          question_type: "SENTENCE_ENDINGS",
+          answer: answer,
+          blankIndex: optionKey, // Store as "1", "2", "3", etc.
+        })
+      }
+
+      localStorage.setItem(answersKey, JSON.stringify(answersArray))
+      setAnswers((prev) => ({
+        ...prev,
+        [`${questionId}_option_${optionKey}`]: answer,
+      }))
+      return
+    }
+
+    // Original handleAnswerChange logic for other question types
     const newAnswers = {
       ...answers,
       [questionId]: answer,
     }
     setAnswers(newAnswers)
 
-    if (inputId && inputId.includes("_note_")) {
+    if (questionType === "NOTE_COMPLETION") {
+      // NOTE_COMPLETION is handled by handleNoteCompletionChange, so we can return here
       return
     }
 
-    const answersKey = `answers_${examId}_reading_${userId}`
-    const existingAnswers = localStorage.getItem(answersKey)
-    let answersArray: any[] = []
-
-    try {
-      if (existingAnswers) {
-        const parsed = JSON.parse(existingAnswers)
-        answersArray = Array.isArray(parsed) ? parsed : []
-      }
-    } catch (error) {
-      console.log("[v0] Error parsing localStorage answers:", error)
-      answersArray = []
-    }
-
-    const parts = questionId.split("_")
-    const questionGroupId = parts[0]
-    let rQuestionId: string
+    const _parts = questionId.split("_") // Renamed from 'parts'
+    const _questionGroupId = _parts[0] // Renamed from 'questionGroupId'
+    let _rQuestionId: string
     if (questionId.includes("_note_")) {
       // For note completion: format is "questionGroupId_rQuestionId_note_index"
-      rQuestionId = parts[1]
+      _rQuestionId = _parts[1]
     } else if (questionId.includes("_row_")) {
-      rQuestionId = parts[1]
+      _rQuestionId = _parts[1]
     } else if (questionId.includes("_blank_")) {
       // For SUMMARY_DRAG: format is "questionGroupId_rQuestionId_blank_index"
-      rQuestionId = parts[1]
+      _rQuestionId = _parts[1]
+    } else if (questionId.includes("_option_")) {
+      // For SENTENCE_ENDINGS: format is "questionGroupId_rQuestionId_option_index"
+      _rQuestionId = _parts[1]
     } else {
-      rQuestionId =
-        parts.length > 1 &&
+      _rQuestionId =
+        _parts.length > 1 &&
         !questionId.includes("_table_") &&
         !questionId.startsWith("matching_") &&
         !questionId.includes("_summary_")
-          ? parts[1]
-          : parts[parts.length - 2]
+          ? _parts[1]
+          : _parts[_parts.length - 2]
     }
 
-    const questionGroup = testData?.questions.find((qg) => qg.id.toString() === questionGroupId)
-    const question = questionGroup?.r_questions?.find((rq) => rq.id.toString() === rQuestionId)
-    const questionType = question?.q_type || "UNKNOWN"
+    const questionGroup = testData?.questions.find((qg) => qg.id.toString() === _questionGroupId)
+    const question = questionGroup?.r_questions?.find((rq) => rq.id.toString() === _rQuestionId)
+    const _questionType = question?.q_type || "UNKNOWN" // Renamed from 'questionType'
 
-    const examIdToUse = backendExamId || examId
+    const _examIdToUse = backendExamId || examId // Renamed from 'examIdToUse'
 
     if (!answer || (Array.isArray(answer) && answer.length === 0) || answer.toString().trim() === "") {
       if (questionId.includes("_table_")) {
-        const rowIndex = parts[parts.length - 2]
-        const cellIndex = parts[parts.length - 1]
+        const rowIndex = _parts[_parts.length - 2]
+        const cellIndex = _parts[_parts.length - 1]
         const cellPosition = `${rowIndex}_${cellIndex}`
         answersArray = answersArray.filter(
           (item: any) => !(item.question_type === "TABLE_COMPLETION" && item.answer && item.answer[cellPosition]),
         )
       } else if (questionId.startsWith("matching_")) {
-        const positionIndex = parts[1]
+        const positionIndex = _parts[1]
         answersArray = answersArray.filter((item: any) => {
           if (item.question_type === "MATCHING_HEADINGS" && item.answer) {
             return Object.keys(item.answer)[0] !== positionIndex
@@ -770,13 +885,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         })
       } else if (questionId.includes("_row_")) {
         // Corrected logic to find and remove the specific MATCHING_INFORMATION answer
-        const rowIndex = Number.parseInt(parts[parts.length - 1]) // Get the row index from the questionId
+        const rowIndex = Number.parseInt(_parts[_parts.length - 1]) // Get the row index from the questionId
         answersArray = answersArray.filter((item: any) => {
           if (item.question_type === "MATCHING_INFORMATION") {
             // Ensure we're comparing the correct question group and question
             if (
-              item.questionId === Number.parseInt(questionGroupId) &&
-              item.r_questionsID === Number.parseInt(rQuestionId)
+              item.questionId === Number.parseInt(_questionGroupId) &&
+              item.r_questionsID === Number.parseInt(_rQuestionId)
             ) {
               // Check if the answer corresponds to the specific row being cleared
               return item.answer[rowIndex.toString()] === undefined
@@ -784,41 +899,55 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           }
           return true
         })
-      } else if (questionType === "MCQ_MULTI") {
+      } else if (_questionType === "MCQ_MULTI") {
         answersArray = answersArray.filter(
           (item: any) =>
             !(
-              item.questionId === Number.parseInt(questionGroupId) &&
-              item.r_questionsID === Number.parseInt(rQuestionId) &&
+              item.questionId === Number.parseInt(_questionGroupId) &&
+              item.r_questionsID === Number.parseInt(_rQuestionId) &&
               item.question_type === "MCQ_MULTI"
             ),
         )
-      } else if (questionType === "SENTENCE_COMPLETION" || questionType === "SUMMARY_COMPLETION") {
+      } else if (_questionType === "SENTENCE_COMPLETION" || _questionType === "SUMMARY_COMPLETION") {
         answersArray = answersArray.filter(
           (item: any) =>
             !(
-              item.questionId === Number.parseInt(questionGroupId) &&
-              item.r_questionsID === Number.parseInt(rQuestionId) &&
+              item.questionId === Number.parseInt(_questionGroupId) &&
+              item.r_questionsID === Number.parseInt(_rQuestionId) &&
               (item.question_type === "SENTENCE_COMPLETION" || item.question_type === "SUMMARY_COMPLETION")
             ),
         )
-      } else if (questionType === "SUMMARY_DRAG") {
-        const blankIndex = Number.parseInt(parts[parts.length - 1])
+      } else if (_questionType === "SUMMARY_DRAG") {
+        const blankIndex = Number.parseInt(_parts[_parts.length - 1])
         answersArray = answersArray.filter(
           (item: any) =>
             !(
-              item.questionId === Number.parseInt(questionGroupId) &&
-              item.r_questionsID === Number.parseInt(rQuestionId) &&
+              item.questionId === Number.parseInt(_questionGroupId) &&
+              item.r_questionsID === Number.parseInt(_rQuestionId) &&
               item.question_type === "SUMMARY_DRAG" &&
               item.blankIndex === blankIndex
+            ),
+        )
+        // Clear SENTENCE_ENDINGS answers
+      } else if (_questionType === "SENTENCE_ENDINGS") {
+        const optionKey = _parts[_parts.length - 1] // This is the option key (e.g., "0", "1")
+        answersArray = answersArray.filter(
+          (item: any) =>
+            !(
+              (
+                item.questionId === Number.parseInt(_questionGroupId) &&
+                item.r_questionsID === Number.parseInt(_rQuestionId) &&
+                item.question_type === "SENTENCE_ENDINGS" &&
+                item.blankIndex === optionKey
+              ) // Use blankIndex for storing the option key
             ),
         )
       } else {
         answersArray = answersArray.filter(
           (item: any) =>
             !(
-              item.questionId === Number.parseInt(questionGroupId) &&
-              item.r_questionsID === Number.parseInt(rQuestionId) &&
+              item.questionId === Number.parseInt(_questionGroupId) &&
+              item.r_questionsID === Number.parseInt(_rQuestionId) &&
               !item.rowIndex &&
               !item.blankIndex
             ),
@@ -830,8 +959,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     }
 
     if (questionId.includes("_table_")) {
-      const rowIndex = parts[parts.length - 2]
-      const cellIndex = parts[parts.length - 1]
+      const rowIndex = _parts[_parts.length - 2]
+      const cellIndex = _parts[_parts.length - 1]
       const cellPosition = `${rowIndex}_${cellIndex}`
 
       answersArray = answersArray.filter(
@@ -840,16 +969,16 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       answersArray.push({
         userId: getUserId(),
-        questionId: Number.parseInt(questionGroupId),
-        r_questionsID: Number.parseInt(rQuestionId),
-        examId: Number.parseInt(examIdToUse),
+        questionId: Number.parseInt(_questionGroupId),
+        r_questionsID: Number.parseInt(_rQuestionId),
+        examId: Number.parseInt(_examIdToUse),
         question_type: "TABLE_COMPLETION",
         answer: {
           [cellPosition]: answer,
         },
       })
     } else if (questionId.startsWith("matching_")) {
-      const positionIndex = parts[1]
+      const positionIndex = _parts[1]
 
       answersArray = answersArray.filter((item: any) => {
         if (item.question_type === "MATCHING_HEADINGS" && item.answer) {
@@ -868,7 +997,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           userId: getUserId(),
           questionId: matchingQuestionGroup.id,
           r_questionsID: matchingQuestion.id,
-          examId: Number.parseInt(examIdToUse),
+          examId: Number.parseInt(_examIdToUse),
           question_type: "MATCHING_HEADINGS",
           answer: {
             [positionIndex]: answer,
@@ -876,7 +1005,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         })
       }
     } else if (questionId.includes("_row_")) {
-      const rowIndex = Number.parseInt(parts[parts.length - 1]) + 1
+      const rowIndex = Number.parseInt(_parts[_parts.length - 1]) + 1
 
       answersArray = answersArray.filter((item: any) => {
         if (item.question_type === "MATCHING_INFORMATION") {
@@ -887,8 +1016,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 ? Object.keys(item.answer)[0]
                 : null
           return !(
-            item.questionId === Number.parseInt(questionGroupId) &&
-            item.r_questionsID === Number.parseInt(rQuestionId) &&
+            item.questionId === Number.parseInt(_questionGroupId) &&
+            item.r_questionsID === Number.parseInt(_rQuestionId) &&
             itemRowIndex === rowIndex.toString()
           )
         }
@@ -897,20 +1026,20 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       answersArray.push({
         userId: getUserId(),
-        questionId: Number.parseInt(questionGroupId),
-        r_questionsID: Number.parseInt(rQuestionId),
-        examId: Number.parseInt(examIdToUse),
+        questionId: Number.parseInt(_questionGroupId),
+        r_questionsID: Number.parseInt(_rQuestionId),
+        examId: Number.parseInt(_examIdToUse),
         question_type: "MATCHING_INFORMATION",
         answer: {
           [rowIndex]: answer,
         },
       })
-    } else if (questionType === "MCQ_MULTI" && Array.isArray(answer)) {
+    } else if (_questionType === "MCQ_MULTI" && Array.isArray(answer)) {
       answersArray = answersArray.filter(
         (item: any) =>
           !(
-            item.questionId === Number.parseInt(questionGroupId) &&
-            item.r_questionsID === Number.parseInt(rQuestionId) &&
+            item.questionId === Number.parseInt(_questionGroupId) &&
+            item.r_questionsID === Number.parseInt(_rQuestionId) &&
             item.question_type === "MCQ_MULTI"
           ),
       )
@@ -918,38 +1047,38 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       answer.forEach((selectedOption) => {
         answersArray.push({
           userId: getUserId(),
-          questionId: Number.parseInt(questionGroupId),
-          r_questionsID: Number.parseInt(rQuestionId),
-          examId: Number.parseInt(examIdToUse),
+          questionId: Number.parseInt(_questionGroupId),
+          r_questionsID: Number.parseInt(_rQuestionId),
+          examId: Number.parseInt(_examIdToUse),
           question_type: "MCQ_MULTI",
           answer: selectedOption,
         })
       })
-    } else if (questionType === "SENTENCE_COMPLETION" || questionType === "SUMMARY_COMPLETION") {
+    } else if (_questionType === "SENTENCE_COMPLETION" || _questionType === "SUMMARY_COMPLETION") {
       answersArray = answersArray.filter(
         (item: any) =>
           !(
-            item.questionId === Number.parseInt(questionGroupId) &&
-            item.r_questionsID === Number.parseInt(rQuestionId) &&
+            item.questionId === Number.parseInt(_questionGroupId) &&
+            item.r_questionsID === Number.parseInt(_rQuestionId) &&
             (item.question_type === "SENTENCE_COMPLETION" || item.question_type === "SUMMARY_COMPLETION")
           ),
       )
       answersArray.push({
         userId: getUserId(),
-        questionId: Number.parseInt(questionGroupId),
-        r_questionsID: Number.parseInt(rQuestionId),
-        examId: Number.parseInt(examIdToUse),
-        question_type: questionType,
+        questionId: Number.parseInt(_questionGroupId),
+        r_questionsID: Number.parseInt(_rQuestionId),
+        examId: Number.parseInt(_examIdToUse),
+        question_type: _questionType,
         answer: answer,
       })
-    } else if (questionType === "SUMMARY_DRAG") {
+    } else if (_questionType === "SUMMARY_DRAG") {
       // For SUMMARY_DRAG, the questionId will be like "groupId_rQuestionId_blank_index"
-      const blankIndex = Number.parseInt(parts[parts.length - 1])
+      const blankIndex = Number.parseInt(_parts[_parts.length - 1])
       answersArray = answersArray.filter(
         (item: any) =>
           !(
-            item.questionId === Number.parseInt(questionGroupId) &&
-            item.r_questionsID === Number.parseInt(rQuestionId) &&
+            item.questionId === Number.parseInt(_questionGroupId) &&
+            item.r_questionsID === Number.parseInt(_rQuestionId) &&
             item.question_type === "SUMMARY_DRAG" &&
             item.blankIndex === blankIndex
           ),
@@ -957,19 +1086,43 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       answersArray.push({
         userId: getUserId(),
-        questionId: Number.parseInt(questionGroupId),
-        r_questionsID: Number.parseInt(rQuestionId),
-        examId: Number.parseInt(examIdToUse),
+        questionId: Number.parseInt(_questionGroupId),
+        r_questionsID: Number.parseInt(_rQuestionId),
+        examId: Number.parseInt(_examIdToUse),
         question_type: "SUMMARY_DRAG",
         answer: answer,
         blankIndex: blankIndex,
+      })
+      // Handle SENTENCE_ENDINGS answer saving
+    } else if (_questionType === "SENTENCE_ENDINGS") {
+      const optionKey = _parts[_parts.length - 1] // This is the option key (e.g., "0", "1")
+      answersArray = answersArray.filter(
+        (item: any) =>
+          !(
+            (
+              item.questionId === Number.parseInt(_questionGroupId) &&
+              item.r_questionsID === Number.parseInt(_rQuestionId) &&
+              item.question_type === "SENTENCE_ENDINGS" &&
+              item.blankIndex === optionKey
+            ) // Storing optionKey in blankIndex
+          ),
+      )
+
+      answersArray.push({
+        userId: getUserId(),
+        questionId: Number.parseInt(_questionGroupId),
+        r_questionsID: Number.parseInt(_rQuestionId),
+        examId: Number.parseInt(_examIdToUse),
+        question_type: "SENTENCE_ENDINGS",
+        answer: answer,
+        blankIndex: optionKey, // Store optionKey here
       })
     } else {
       answersArray = answersArray.filter(
         (item: any) =>
           !(
-            item.questionId === Number.parseInt(questionGroupId) &&
-            item.r_questionsID === Number.parseInt(rQuestionId) &&
+            item.questionId === Number.parseInt(_questionGroupId) &&
+            item.r_questionsID === Number.parseInt(_rQuestionId) &&
             !item.rowIndex &&
             !item.blankIndex
           ),
@@ -977,10 +1130,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       answersArray.push({
         userId: getUserId(),
-        questionId: Number.parseInt(questionGroupId),
-        r_questionsID: Number.parseInt(rQuestionId),
-        examId: Number.parseInt(examIdToUse),
-        question_type: questionType,
+        questionId: Number.parseInt(_questionGroupId),
+        r_questionsID: Number.parseInt(_rQuestionId),
+        examId: Number.parseInt(_examIdToUse),
+        question_type: _questionType,
         answer: answer,
       })
     }
@@ -1015,7 +1168,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       try {
         if (existingAnswers) {
-          const parsed = JSON.parse(existingAnswers)
+          const parsed = JSON.parse(existingAnswers) // Corrected from JSON.JSON.parse
           answersArray = Array.isArray(parsed) ? parsed : []
         }
       } catch (error) {
@@ -1463,7 +1616,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             })
           }
         } else if (question.q_type === "NOTE_COMPLETION") {
-          const blankCount = (question.q_text?.match(/____+/g) || []).length
+          const optionsText =
+            typeof question.options === "string" ? question.options : JSON.stringify(question.options || "")
+          const blankCount = (optionsText.match(/____+/g) || []).length
           for (let i = 0; i < blankCount; i++) {
             const inputId = `${questionGroup.id}_${question.id}_note_${i}`
             if (answers[inputId]) {
@@ -1475,6 +1630,14 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           const blanks = question.q_text?.match(/____+/g) || []
           for (let i = 0; i < blanks.length; i++) {
             const inputId = `${questionId}_blank_${i + 1}` // Note: blankIndex is 1-based in summaryDragAnswers
+            if (answers[inputId]) {
+              count++
+            }
+          }
+        } else if (question.q_type === "SENTENCE_ENDINGS") {
+          const optionsCount = question.options ? Object.keys(question.options).length : 0
+          for (let i = 1; i <= optionsCount; i++) {
+            const inputId = `${questionId}_option_${i}`
             if (answers[inputId]) {
               count++
             }
@@ -1492,8 +1655,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
   const getPartQuestionCount = (partNumber: number): number => {
     const part = `PART${partNumber}`
-    const getCurrentPartPassages = testData?.passages?.filter((p) => p.part === `PART${partNumber}`) || []
-
     const partQuestions = testData?.questions.filter((q) => {
       return q.part === part
     })
@@ -1501,7 +1662,54 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     let count = 0
     for (const questionGroup of partQuestions) {
       if (questionGroup.r_questions && questionGroup.r_questions.length > 0) {
-        count += questionGroup.r_questions.length
+        questionGroup.r_questions.forEach((question) => {
+          if (question.q_type === "MCQ_MULTI") {
+            // Each correct answer counts as a separate question
+            count += question.correct_answers?.length || 1
+          } else if (question.q_type === "TABLE_COMPLETION") {
+            // Count empty cells in the table
+            if (question.rows && Array.isArray(question.rows)) {
+              question.rows.forEach((row) => {
+                if (row.cells && Array.isArray(row.cells)) {
+                  row.cells.forEach((cell) => {
+                    if (cell === "" || cell === "_") {
+                      count++
+                    }
+                  })
+                }
+              })
+            } else if (question.table_structure?.rows) {
+              question.table_structure.rows.forEach((row) => {
+                Object.entries(row).forEach(([cellKey, cellValue]) => {
+                  if (cellValue === "" || cellValue === "_") {
+                    count++
+                  }
+                })
+              })
+            }
+          } else if (question.q_type === "NOTE_COMPLETION") {
+            // Count blanks in options
+            const optionsText =
+              typeof question.options === "string" ? question.options : JSON.stringify(question.options || "")
+            const blankCount = (optionsText.match(/____+/g) || []).length
+            count += blankCount > 0 ? blankCount : 1
+          } else if (question.q_type === "MATCHING_INFORMATION") {
+            // Count rows
+            const rowCount = (question as any).rows?.length || 1
+            count += rowCount
+          } else if (question.q_type === "SUMMARY_DRAG") {
+            // Count blanks in q_text
+            const blankCount = (question.q_text?.match(/____+/g) || []).length
+            count += blankCount > 0 ? blankCount : 1
+          } else if (question.q_type === "SENTENCE_ENDINGS") {
+            // Count options
+            const optionsCount = question.options ? Object.keys(question.options).length : 1
+            count += optionsCount
+          } else {
+            // Other question types count as 1
+            count++
+          }
+        })
       }
     }
     return count
@@ -1584,13 +1792,18 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           endNum = Math.max(endNum, currentStart)
         }
       } else if (question.q_type === "NOTE_COMPLETION") {
-        // Calculate range for NOTE_COMPLETION
-        const blankCount = (question.q_text?.match(/____+/g) || []).length
+        const optionsText =
+          typeof question.options === "string" ? question.options : JSON.stringify(question.options || "")
+        const blankCount = (optionsText.match(/____+/g) || []).length
         endNum = Math.max(endNum, currentStart + blankCount - 1)
       } else if (question.q_type === "SUMMARY_DRAG") {
         // Calculate range for SUMMARY_DRAG
         const blanks = question.q_text?.match(/____+/g) || []
         endNum = Math.max(endNum, currentStart + blanks.length - 1)
+        // Calculate range for SENTENCE_ENDINGS
+      } else if (question.q_type === "SENTENCE_ENDINGS") {
+        const optionsCount = question.options ? Object.keys(question.options).length : 0
+        endNum = Math.max(endNum, currentStart + optionsCount - 1)
       } else {
         endNum = Math.max(endNum, currentStart)
       }
@@ -1841,7 +2054,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                     handleRemove(index)
                                   }}
                                   onDragEnd={() => setDraggedOption(null)}
-                                  className="font-medium cursor-move px-2 py-1 bg-blue-100 rounded text-black"
+                                  className="cursor-move px-2 py-1 bg-blue-100 rounded text-black"
                                 >
                                   {choices[currentAnswers[index + 1]]}
                                 </span>
@@ -1915,6 +2128,35 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
     // Update answers for submission, setting to empty
     handleAnswerChange(`${questionId}_blank_${blankIndex + 1}`, "")
+  }
+
+  const handleSentenceEndingsDrop = (questionId: string, optionKey: string, choiceKey: string) => {
+    setSentenceEndingsAnswers((prev) => ({
+      ...prev,
+      [questionId]: {
+        ...(prev[questionId] || {}),
+        [optionKey]: choiceKey,
+      },
+    }))
+
+    // Save to answers state - use simple numeric key for SENTENCE_ENDINGS
+    handleAnswerChange(questionId, choiceKey, "SENTENCE_ENDINGS", optionKey)
+  }
+
+  const handleSentenceEndingsRemove = (questionId: string, optionKey: string) => {
+    setSentenceEndingsAnswers((prev) => {
+      const updated = { ...prev }
+      if (updated[questionId]) {
+        delete updated[questionId][optionKey]
+        if (Object.keys(updated[questionId]).length === 0) {
+          delete updated[questionId]
+        }
+      }
+      return updated
+    })
+
+    // Remove from answers state
+    handleAnswerChange(questionId, "", "SENTENCE_ENDINGS", optionKey)
   }
 
   useEffect(() => {
@@ -2041,8 +2283,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           className={`space-y-6 p-6 rounded-lg border-b ${colorStyles.border} last:border-b-0`}
           style={{ fontSize: `${textSize}px` }}
         >
-          {(questionGroup.title || questionGroup.instruction) &&
-            !questionGroup.r_questions?.some((q) => q.q_type === "SUMMARY_DRAG") && (
+          {/* Question group header - only show if not SUMMARY_DRAG or SENTENCE_ENDINGS */}
+          {!questionGroup.r_questions?.some((q) => q.q_type === "SUMMARY_DRAG") &&
+            !questionGroup.r_questions?.some((q) => q.q_type === "SENTENCE_ENDINGS") && (
               <div className="mb-6">
                 {questionGroup.title && (
                   <h3 className={`text-xl font-bold mb-3 ${colorStyles.text}`}>{questionGroup.title}</h3>
@@ -2082,6 +2325,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 question.q_type !== "MCQ_SINGLE" &&
                 question.q_type !== "NOTE_COMPLETION" &&
                 question.q_type !== "SUMMARY_DRAG" &&
+                question.q_type !== "SENTENCE_ENDINGS" &&
                 question.q_type !== "TABLE_COMPLETION" ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
@@ -2120,6 +2364,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                             const blanks = question.q_text?.match(/____+/g) || []
                             const endNum = startNum + blanks.length - 1
                             return blanks.length > 1 ? `${startNum}–${endNum}` : startNum
+                          } else if (question.q_type === "SENTENCE_ENDINGS") {
+                            const optionsCount = question.options ? Object.keys(question.options).length : 0
+                            const endNum = startNum + optionsCount - 1
+                            return optionsCount > 1 ? `${startNum}–${endNum}` : startNum
                           }
 
                           return startNum
@@ -2332,18 +2580,22 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                         const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
 
                         const optionsText =
-                          typeof question.options === "string" ? question.options : JSON.stringify(question.options)
-
+                          typeof question.options === "string"
+                            ? question.options
+                            : JSON.stringify(question.options || "")
                         // h1 elementlerini ajratamiz
                         const parts = optionsText.split(/(<h1>.*?<\/h1>)/g)
                         let currentInputIndex = 0
 
                         return parts.map((part, index) => {
-                          // Agar <h1> bo'lsa, markazda chiqaramiz
+                          // Agar <h1> bo‘lsa, markazda chiqaramiz
                           if (/<h1>.*?<\/h1>/.test(part)) {
                             const headingText = part.replace(/<\/?h1>/g, "").trim()
                             return (
-                              <div key={index} className={`text-center my-6 font-bold text-[22px] ${colorStyles.text}`}>
+                              <div
+                                key={`heading_${index}`}
+                                className={`text-center my-6 font-bold text-[22px] ${colorStyles.text}`}
+                              >
                                 {headingText}
                               </div>
                             )
@@ -2353,7 +2605,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           const textParts = part.split(/(____+)/)
 
                           return (
-                            <div key={index} className="my-3">
+                            <div key={`textblock_${index}`} className="my-3">
                               {textParts.map((subPart, subIndex) => {
                                 if (subPart.match(/____+/)) {
                                   const questionNum = questionStartNum + currentInputIndex
@@ -2364,7 +2616,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                                   return (
                                     <span
-                                      key={`${index}_${subIndex}`}
+                                      key={`input_${question.id}_${index}_${subIndex}`}
                                       className="inline-flex items-center mx-[4px] align-middle"
                                     >
                                       <Input
@@ -2389,7 +2641,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                 } else {
                                   return (
                                     <span
-                                      key={`${index}_subIndex`}
+                                      key={`text_${question.id}_${index}_${subIndex}`}
                                       className={`${colorStyles.text} leading-relaxed`}
                                       style={{ fontSize: `${textSize}px` }}
                                       dangerouslySetInnerHTML={{ __html: subPart }}
@@ -2416,9 +2668,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               const hasUnderscores = typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
 
                               if (isEmptyOrUnderscore || hasUnderscores) {
-                                const tableAnswersKey = `${questionId}_answer`
-                                const tableAnswers = answers[tableAnswersKey] || {}
-                                const cellKey = `${rowIndex}_${cellIndex}`
+                                const tableAnswersKey = `${questionId}_table_${rowIndex}_${cellIndex}` // Use a unique key for each cell
+                                const tableAnswers = answers[tableAnswersKey] || "" // Fetch answer for this specific cell
 
                                 // Har bir input uchun placeholder nomerini hisoblash
                                 const inputQuestionNumber = getQuestionNumber(questionId) // Start with the base question number
@@ -2447,13 +2698,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                               return (
                                                 <Input
                                                   key={partIndex}
-                                                  value={tableAnswers[cellKey] || ""}
-                                                  onChange={(e) =>
-                                                    handleAnswerChange(tableAnswersKey, {
-                                                      ...tableAnswers,
-                                                      [cellKey]: e.target.value,
-                                                    })
-                                                  }
+                                                  value={tableAnswers || ""}
+                                                  onChange={(e) => handleAnswerChange(tableAnswersKey, e.target.value)}
                                                   className="inline-block text-black w-32 text-sm bg-white border-2 border-black focus:border-black text-center"
                                                   placeholder={finalQuestionNumber.toString()}
                                                 />
@@ -2468,13 +2714,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                         </div>
                                       ) : (
                                         <Input
-                                          value={tableAnswers[cellKey] || ""}
-                                          onChange={(e) =>
-                                            handleAnswerChange(tableAnswersKey, {
-                                              ...tableAnswers,
-                                              [cellKey]: e.target.value,
-                                            })
-                                          }
+                                          value={tableAnswers || ""}
+                                          onChange={(e) => handleAnswerChange(tableAnswersKey, e.target.value)}
                                           className="w-full text-sm bg-white  text-black border-2 border-black focus:border-black text-center"
                                           placeholder={finalQuestionNumber.toString()}
                                         />
@@ -2500,7 +2741,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 {question.q_type === "MATCHING_INFORMATION" && question.rows && question.choices && (
                   <div className="space-y-5">
                     {/* Instruction bo'lsa, tepada chiqadi */}
-                    {/* questionStartNum and questionEndNum are undeclared, so removed them */}
+                    {/* Question group instruction is already handled above */}
 
                     {/* Jadval (asosiy qismlar) */}
                     <div className="overflow-x-auto">
@@ -2611,150 +2852,136 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   </div>
                 )}
 
-    {question.q_type === "SUMMARY_DRAG" && question.options && (
-  <div className="space-y-4">
-    {/* Savol raqami */}
-    <div className="text-2xl font-bold mb-2 text-black">
-      Questions {(() => {
-        const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-        const blanks = question.options?.match(/___+/g) || []
-        const endNum = startNum + blanks.length - 1
-        return blanks.length > 1 ? `${startNum}–${endNum}` : startNum
-      })()}
-    </div>
+                {question.q_type === "SENTENCE_ENDINGS" && question.options && question.choices && (
+                  <div className="space-y-4">
+                    {/* Questions header */}
+                    <div className="text-2xl font-bold mb-2 text-black">
+                      Questions {(() => {
+                        const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                        const optionsCount = Object.keys(question.options).length
+                        const endNum = startNum + optionsCount - 1
+                        return optionsCount > 1 ? `${startNum}–${endNum}` : startNum
+                      })()}
+                    </div>
 
-    {/* Instruksiya */}
-    {questionGroup.instruction && (
-      <div
-        className={`text-base leading-relaxed mb-4 ${colorStyles.text}`}
-        dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
-      />
-    )}
+                    {/* Instruction */}
+                    {questionGroup.instruction && (
+                      <div
+                        className={`text-base leading-relaxed mb-4 ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                      />
+                    )}
 
-    {/* Savol matni */}
-    {question.q_text && (
-      <div
-        className={`text-lg font-medium mb-4 ${colorStyles.text}`}
-        dangerouslySetInnerHTML={{ __html: question.q_text }}
-      />
-    )}
+                    {/* Question text if exists */}
+                    {question.q_text && (
+                      <div
+                        className={`text-lg font-medium mb-4 ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
 
-    {/* Drag-and-drop qismining asosiy konteyneri */}
-    <div
-      className={`rounded-lg p-4 text-black leading-relaxed ${colorStyles.cardBg} border border-gray-300`}
-    >
-      {(() => {
-        const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-        const optionsText =
-          typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+                    {/* Options with drag zones */}
+                    <div className="space-y-3">
+                      {Object.entries(question.options).map(([optionKey, optionText]) => {
+                        const questionNum =
+                          getQuestionNumber(`${questionGroup.id}_${question.id}`) + Number.parseInt(optionKey) - 1
+                        const currentAnswers = sentenceEndingsAnswers[questionId] || {}
+                        const selectedChoice = currentAnswers[optionKey]
 
-        const parts = optionsText.split(/(___+)/)
-        let currentBlankIndex = 0
-        const currentAnswers = summaryDragAnswers[questionId] || {}
+                        return (
+                          <div key={optionKey} className="space-y-2">
+                            {/* Incomplete sentence */}
+                            <div className={`text-base ${colorStyles.text}`}>
+                              <span dangerouslySetInnerHTML={{ __html: optionText as string }} />
+                            </div>
 
-        return parts.map((part, index) => {
-          if (part.match(/___+/)) {
-            const questionNum = questionStartNum + currentBlankIndex
-            const blankIndex = currentBlankIndex
-            currentBlankIndex++
+                            <div
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                e.currentTarget.classList.add("border-blue-500", "bg-blue-50")
+                              }}
+                              onDragLeave={(e) => {
+                                e.currentTarget.classList.remove("border-blue-500", "bg-blue-50")
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                e.currentTarget.classList.remove("border-blue-500", "bg-blue-50")
+                                if (draggedOption) {
+                                  handleSentenceEndingsDrop(questionId, optionKey, draggedOption.key)
+                                  setDraggedOption(null)
+                                }
+                              }}
+                              className="flex items-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg min-h-[40px] cursor-pointer hover:bg-gray-100 transition-colors"
+                            >
+                              <span className="bg-white border-2 border-[#4B61D1] text-gray-900 w-6 h-6 rounded flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                {questionNum}
+                              </span>
 
-            return (
-              <span
-                key={`${index}_blank`}
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  e.currentTarget.classList.add("border-blue-500", "bg-blue-100")
-                }}
-                onDragLeave={(e) => {
-                  e.currentTarget.classList.remove("border-blue-500", "bg-blue-100")
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  e.currentTarget.classList.remove("border-blue-500", "bg-blue-100")
-                  if (draggedOption) {
-                    handleSummaryDragDrop(questionId, blankIndex, draggedOption.key)
-                    setDraggedOption(null)
-                  }
-                }}
-                className="inline-flex items-center gap-2 mx-1 px-3 py-1 border border-dashed border-gray-400 bg-gray-50 rounded-md cursor-pointer hover:bg-gray-100 transition-all align-middle min-w-[150px] h-[32px]"
-              >
-                <span className="bg-white text-blue-600 px-2 py-0.5 rounded text-sm font-bold border border-blue-600">
-                  {questionNum}
-                </span>
+                              {selectedChoice ? (
+                                <div
+                                  draggable
+                                  onDragStart={() => {
+                                    const choiceText = question.choices?.[selectedChoice] || ""
+                                    setDraggedOption({ key: selectedChoice, text: choiceText })
+                                    handleSentenceEndingsRemove(questionId, optionKey)
+                                  }}
+                                  onDragEnd={() => setDraggedOption(null)}
+                                  className="flex-1 px-2 py-1 bg-blue-100 border border-blue-300 rounded text-black font-medium cursor-move hover:bg-blue-200 transition-colors text-sm"
+                                >
+                                  {question.choices?.[selectedChoice]}
+                                </div>
+                              ) : (
+                                <div className="flex-1 text-gray-400 text-sm italic">Drag an answer here</div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
 
-                {currentAnswers[blankIndex + 1] ? (
-                  <span
-                    draggable
-                    onDragStart={() => {
-                      const choiceKey = currentAnswers[blankIndex + 1]
-                      const choiceText = question.choices?.[choiceKey] || ""
-                      setDraggedOption({ key: choiceKey, text: choiceText, fromBlank: true, blankIndex })
-                    }}
-                    onDragEnd={() => setDraggedOption(null)}
-                    className="font-medium cursor-move px-2 py-0.5 bg-blue-100 rounded text-black text-sm"
-                  >
-                    {question.choices?.[currentAnswers[blankIndex + 1]]}
-                  </span>
-                ) : (
-                  <div className="flex-1 h-[6px] bg-gray-300 rounded-md mx-1"></div>
+                    {/* Choices section */}
+                    <div className="mt-6 pt-4 border-t-2 border-gray-200">
+                      <div className="text-sm font-semibold mb-3 text-black">
+                        Choose the correct answer and move it into the gap.
+                      </div>
+
+                      <div
+                        className="flex flex-wrap gap-3 p-4 border-2 border-gray-200 rounded-lg bg-white"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          // Allow dropping back to choices area (removes from answer)
+                        }}
+                      >
+                        {(() => {
+                          const currentAnswers = sentenceEndingsAnswers[questionId] || {}
+                          const usedChoices = Object.values(currentAnswers)
+                          const availableChoices = Object.entries(question.choices || {}).filter(
+                            ([key]) => !usedChoices.includes(key),
+                          )
+
+                          return availableChoices.map(([key, text]) => (
+                            <div
+                              key={key}
+                              draggable
+                              onDragStart={() => setDraggedOption({ key, text: text as string })}
+                              onDragEnd={() => setDraggedOption(null)}
+                              className="px-4 py-2 border-2 border-gray-300 rounded-lg bg-white text-black font-medium hover:border-blue-500 hover:bg-blue-50 transition-colors cursor-move"
+                              style={{ fontSize: `${textSize}px` }}
+                            >
+                              {text}
+                            </div>
+                          ))
+                        })()}
+                      </div>
+                    </div>
+                  </div>
                 )}
-              </span>
-            )
-          } else {
-            return <span key={index}>{part}</span>
-          }
-        })
-      })()}
-    </div>
-
-    {/* Variantlar (javoblar) qutisi */}
-    {question.choices && Object.keys(question.choices).length > 0 && (
-      <div className="mt-4">
-        <div className="text-sm font-semibold mb-3 text-black">
-          Choose the correct answer and move it into the gap.
-        </div>
-
-        <div
-          className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg min-h-[60px] bg-gray-50"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault()
-            if (draggedOption?.fromBlank) {
-              handleSummaryDragRemove(questionId, draggedOption.blankIndex)
-              setDraggedOption(null)
-            }
-          }}
-        >
-          {(() => {
-            const currentAnswers = summaryDragAnswers[questionId] || {}
-            const usedChoices = Object.values(currentAnswers)
-            const availableChoices = Object.entries(question.choices || {}).filter(
-              ([key]) => !usedChoices.includes(key)
-            )
-
-            return availableChoices.map(([key, text]) => (
-              <div
-                key={key}
-                draggable
-                onDragStart={() => setDraggedOption({ key, text })}
-                onDragEnd={() => setDraggedOption(null)}
-                className="px-4 py-2 border border-gray-300 rounded-lg bg-white text-black font-medium hover:border-blue-500 hover:bg-blue-50 transition-colors cursor-move"
-                style={{ fontSize: `${textSize}px` }}
-              >
-                {text}
-              </div>
-            ))
-          })()}
-        </div>
-      </div>
-    )}
-  </div>
-)}
-
               </div>
             )
           })}
 
+          {renderSummaryDrag(questionGroup)}
           {renderSummaryCompletion(questionGroup)}
         </div>
       ))
@@ -3239,115 +3466,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               </button>,
                             )
                           }
-                        } else if (question.q_type === "TABLE_COMPLETION") {
-                          let inputIndex = 0
-                          if (question.rows && Array.isArray(question.rows)) {
-                            question.rows.forEach((row, rowIndex) => {
-                              if (row.cells && Array.isArray(row.cells)) {
-                                row.cells.forEach((cell, cellIndex) => {
-                                  if (cell === "" || cell === "_") {
-                                    const tableQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
-                                    const isAnswered = !!answers[tableQuestionId]
-                                    questionButtons.push(
-                                      <button
-                                        key={tableQuestionId}
-                                        onClick={() => {
-                                          scrollToQuestion(questionId)
-                                          setIsMobileMenuOpen(false)
-                                        }}
-                                        className={`w-7 h-7 text-xs font-medium rounded transition-colors ${
-                                          isAnswered
-                                            ? "bg-green-500 text-white hover:bg-green-600"
-                                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                                        }`}
-                                      >
-                                        {startNum + inputIndex}
-                                      </button>,
-                                    )
-                                    inputIndex++
-                                  }
-                                })
-                              }
-                            })
-                          } else if (question.table_structure?.rows) {
-                            question.table_structure.rows.forEach((row, rowIndex) => {
-                              Object.entries(row).forEach(([key, value], cellIndex) => {
-                                if (value === "" || value === "_") {
-                                  const tableQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
-                                  const isAnswered = !!answers[tableQuestionId]
-                                  questionButtons.push(
-                                    <button
-                                      key={tableQuestionId}
-                                      onClick={() => {
-                                        scrollToQuestion(questionId)
-                                        setIsMobileMenuOpen(false)
-                                      }}
-                                      className={`w-7 h-7 text-xs font-medium rounded transition-colors ${
-                                        isAnswered
-                                          ? "bg-green-500 text-white hover:bg-green-600"
-                                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                                      }`}
-                                    >
-                                      {startNum + inputIndex}
-                                    </button>,
-                                  )
-                                  inputIndex++
-                                }
-                              })
-                            })
-                          }
-                        } else if (question.q_type === "MATCHING_INFORMATION") {
-                          const rowCount = (question as any).rows?.length || 1
-                          for (let i = 0; i < rowCount; i++) {
-                            const rowQuestionId = `${questionId}_row_${i}`
-                            const isAnswered = !!answers[rowQuestionId]
-                            questionButtons.push(
-                              <button
-                                key={rowQuestionId}
-                                onClick={() => {
-                                  scrollToQuestion(questionId)
-                                  setIsMobileMenuOpen(false)
-                                }}
-                                className={`w-7 h-7 text-xs font-medium rounded transition-colors ${
-                                  isAnswered
-                                    ? "bg-green-500 text-white hover:bg-green-600"
-                                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                                }`}
-                              >
-                                {startNum + i}
-                              </button>,
-                            )
-                          }
-                        } else if (question.q_type === "SENTENCE_COMPLETION") {
-                          const blanks = question.q_text?.match(/_+/g) || []
-                          const currentAnswer = answers[questionId]
-
-                          for (let i = 0; i < blanks.length; i++) {
-                            const isAnswered =
-                              currentAnswer &&
-                              (typeof currentAnswer === "string"
-                                ? i === 0
-                                : typeof currentAnswer === "object" && currentAnswer[i.toString()])
-                            questionButtons.push(
-                              <button
-                                key={`${questionId}_${i}`}
-                                onClick={() => {
-                                  scrollToQuestion(questionId)
-                                  setIsMobileMenuOpen(false)
-                                }}
-                                className={`w-7 h-7 text-xs font-medium rounded transition-colors ${
-                                  isAnswered
-                                    ? "bg-green-500 text-white hover:bg-green-600"
-                                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                                }`}
-                              >
-                                {startNum + i}
-                              </button>,
-                            )
-                          }
                         } else if (question.q_type === "NOTE_COMPLETION") {
-                          // Add buttons for NOTE_COMPLETION
-                          const blanks = question.q_text?.match(/____+/g) || []
+                          const optionsText =
+                            typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+                          const blanks = optionsText.match(/____+/g) || []
                           blanks.forEach((_, index) => {
                             const inputId = `${questionId}_note_${index}`
                             const isAnswered = !!answers[inputId]
@@ -3357,6 +3479,27 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                 onClick={() => {
                                   scrollToQuestion(questionId)
                                   setIsMobileMenuOpen(false)
+                                }}
+                                className={`w-7 h-7 text-xs font-medium rounded transition-colors ${
+                                  isAnswered
+                                    ? "bg-green-500 text-white hover:bg-green-600"
+                                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                }`}
+                              >
+                                {startNum + index}
+                              </button>,
+                            )
+                          })
+                        } else if (question.q_type === "SUMMARY_DRAG") {
+                          const blanks = question.q_text?.match(/____+/g) || []
+                          blanks.forEach((_, index) => {
+                            const inputId = `${questionId}_blank_${index + 1}`
+                            const isAnswered = !!answers[inputId]
+                            questionButtons.push(
+                              <button
+                                key={`${questionId}_blank_${index + 1}`}
+                                onClick={() => {
+                                  scrollToQuestion(questionId)
                                 }}
                                 className={`w-7 h-7 text-xs font-medium rounded transition-colors ${
                                   isAnswered
@@ -3398,305 +3541,317 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           </div>
         )}
 
-        <div className="flex items-center justify-between max-w-6xl mx-auto w-full">
-          {/* Desktop Navigation - CHANGE: Simplified layout to show parts inline with question numbers only for active part */}
-          <div className="hidden md:flex items-center space-x-4 flex-1">
-            {/* Part Navigation */}
-            <div className="flex items-center space-x-2">
-              {[1, 2, 3].map((partNum) => {
-                const totalQuestions = getPartQuestionCount(partNum)
-                const answeredCount = getAnsweredCountForPart(partNum)
-                const isActive = currentPart === partNum
+        <div className="flex items-center justify-center gap-8">
+          {/* Parts Navigation */}
+          <div className="flex items-center gap-4">
+            {getAvailableParts().map((partNum) => {
+              const range = getPartQuestionRange(partNum)
+              const totalQuestions = getPartQuestionCount(partNum)
+              const answeredCount = getAnsweredCountForPart(partNum)
 
-                return (
-                  <div key={partNum} className="flex items-center space-x-2">
-                    <button
-                      onClick={() => switchToPart(partNum)}
-                      className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
-                        isActive ? "bg-gray-800 text-white" : "text-gray-600 hover:text-gray-900"
-                      }`}
-                    >
-                      Part {partNum}
-                    </button>
+              return (
+                <button
+                  key={partNum}
+                  onClick={() => switchToPart(partNum)}
+                  className={`text-sm font-medium transition-colors ${
+                    currentPart === partNum
+                      ? "text-gray-900 underline underline-offset-4"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Part {partNum} {answeredCount} of {totalQuestions}
+                </button>
+              )
+            })}
+          </div>
 
-                    {/* Show question numbers only for active part */}
-                    {isActive && (
-                      <div className="flex items-center space-x-1">
-                        {(() => {
-                          const partQuestions = getQuestionsForPart(currentPart)
-                          const questionButtons: React.ReactElement[] = []
+          {/* Question Numbers for Current Part */}
+          <div className="flex items-center gap-1">
+            {(() => {
+              const partQuestions = getQuestionsForPart(currentPart)
+              const questionButtons: React.ReactElement[] = []
 
-                          partQuestions.forEach((questionGroup) => {
-                            const sortedRQuestions = questionGroup.r_questions
-                              ? [...questionGroup.r_questions].sort((a, b) => {
-                                  const aOrder = a.order ?? a.q_number ?? a.id
-                                  const bOrder = b.order ?? b.q_number ?? b.id
-                                  return Number(aOrder) - Number(bOrder)
-                                })
-                              : []
+              partQuestions.forEach((questionGroup) => {
+                const sortedRQuestions = questionGroup.r_questions
+                  ? [...questionGroup.r_questions].sort((a, b) => {
+                      const aOrder = a.order ?? a.q_number ?? a.id
+                      const bOrder = b.order ?? b.q_number ?? b.id
+                      return Number(aOrder) - Number(bOrder)
+                    })
+                  : []
 
-                            sortedRQuestions.forEach((question) => {
-                              const questionId = `${questionGroup.id}_${question.id}`
-                              const startNum = getQuestionNumber(questionId)
+                sortedRQuestions.forEach((question) => {
+                  const questionId = `${questionGroup.id}_${question.id}`
+                  const startNum = getQuestionNumber(questionId)
 
-                              if (question.q_type === "MATCHING_HEADINGS") {
-                                const matchingPassage = getCurrentPartPassages.find((p) => p.type === "matching")
-                                if (matchingPassage) {
-                                  const underscorePattern = /_{2,}/g
-                                  const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
+                  if (question.q_type === "MATCHING_HEADINGS") {
+                    const matchingPassage = getCurrentPartPassages.find((p) => p.type === "matching")
+                    if (matchingPassage) {
+                      const underscorePattern = /_{2,}/g
+                      const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
 
-                                  for (let i = 0; i < matches.length; i++) {
-                                    const positionIndex = i + 1
-                                    const isAnswered = !!matchingAnswers[questionId]?.[positionIndex]
+                      for (let i = 0; i < matches.length; i++) {
+                        const positionIndex = i + 1
+                        const isAnswered = !!matchingAnswers[questionId]?.[positionIndex]
 
-                                    questionButtons.push(
-                                      <button
-                                        key={`${questionId}_${i}`}
-                                        onClick={() => scrollToQuestion(questionId)}
-                                        className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
-                                          isAnswered
-                                            ? "bg-green-500 text-white hover:bg-green-600"
-                                            : "bg-gray-300 text-gray-700 hover:bg-gray-400"
-                                        }`}
-                                      >
-                                        {startNum + i}
-                                      </button>,
-                                    )
-                                  }
-                                }
-                              } else if (question.q_type === "MCQ_MULTI") {
-                                const correctCount = question.correct_answers?.length || 1
-                                const selectedAnswers = Array.isArray(answers[questionId]) ? answers[questionId] : []
-                                const selectedCount = selectedAnswers.length
+                        questionButtons.push(
+                          <button
+                            key={`${questionId}_${i}`}
+                            onClick={() => scrollToQuestion(questionId)}
+                            className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                              isAnswered
+                                ? "bg-green-500 text-white hover:bg-green-600"
+                                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                            }`}
+                          >
+                            {startNum + i}
+                          </button>,
+                        )
+                      }
+                    }
+                  } else if (question.q_type === "MCQ_MULTI") {
+                    const correctCount = question.correct_answers?.length || 1
+                    const selectedAnswers = Array.isArray(answers[questionId]) ? answers[questionId] : []
+                    const selectedCount = selectedAnswers.length
 
-                                for (let i = 0; i < correctCount; i++) {
-                                  questionButtons.push(
-                                    <button
-                                      key={`${questionId}_${i}`}
-                                      onClick={() => scrollToQuestion(questionId)}
-                                      className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
-                                        i < selectedCount
-                                          ? "bg-green-500 text-white hover:bg-green-600"
-                                          : "bg-gray-300 text-gray-700 hover:bg-gray-400"
-                                      }`}
-                                    >
-                                      {startNum + i}
-                                    </button>,
-                                  )
-                                }
-                              } else if (question.q_type === "TABLE_COMPLETION") {
-                                let inputIndex = 0
-                                if (question.rows && Array.isArray(question.rows)) {
-                                  question.rows.forEach((row, rowIndex) => {
-                                    if (row.cells && Array.isArray(row.cells)) {
-                                      row.cells.forEach((cell, cellIndex) => {
-                                        if (cell === "" || cell === "_") {
-                                          const tableQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
-                                          const isAnswered = !!answers[tableQuestionId]
-                                          questionButtons.push(
-                                            <button
-                                              key={tableQuestionId}
-                                              onClick={() => scrollToQuestion(questionId)}
-                                              className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
-                                                isAnswered
-                                                  ? "bg-green-500 text-white hover:bg-green-600"
-                                                  : "bg-gray-300 text-gray-700 hover:bg-gray-400"
-                                              }`}
-                                            >
-                                              {startNum + inputIndex}
-                                            </button>,
-                                          )
-                                          inputIndex++
-                                        }
-                                      })
-                                    }
-                                  })
-                                } else if (question.table_structure?.rows) {
-                                  question.table_structure.rows.forEach((row, rowIndex) => {
-                                    Object.entries(row).forEach(([key, value], cellIndex) => {
-                                      if (value === "" || value === "_") {
-                                        const tableQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
-                                        const isAnswered = !!answers[tableQuestionId]
-                                        questionButtons.push(
-                                          <button
-                                            key={tableQuestionId}
-                                            onClick={() => scrollToQuestion(questionId)}
-                                            className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
-                                              isAnswered
-                                                ? "bg-green-500 text-white hover:bg-green-600"
-                                                : "bg-gray-300 text-gray-700 hover:bg-gray-400"
-                                            }`}
-                                          >
-                                            {startNum + inputIndex}
-                                          </button>,
-                                        )
-                                        inputIndex++
-                                      }
-                                    })
-                                  })
-                                }
-                              } else if (question.q_type === "MATCHING_INFORMATION") {
-                                const rowCount = (question as any).rows?.length || 1
-                                for (let i = 0; i < rowCount; i++) {
-                                  const rowQuestionId = `${questionId}_row_${i}`
-                                  const isAnswered = !!answers[rowQuestionId]
-                                  questionButtons.push(
-                                    <button
-                                      key={rowQuestionId}
-                                      onClick={() => scrollToQuestion(questionId)}
-                                      className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
-                                        isAnswered
-                                          ? "bg-green-500 text-white hover:bg-green-600"
-                                          : "bg-gray-300 text-gray-700 hover:bg-gray-400"
-                                      }`}
-                                    >
-                                      {startNum + i}
-                                    </button>,
-                                  )
-                                }
-                              } else if (question.q_type === "SENTENCE_COMPLETION") {
-                                const blanks = question.q_text?.match(/_+/g) || []
-                                const currentAnswer = answers[questionId]
+                    for (let i = 0; i < correctCount; i++) {
+                      questionButtons.push(
+                        <button
+                          key={`${questionId}_${i}`}
+                          onClick={() => scrollToQuestion(questionId)}
+                          className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                            i < selectedCount
+                              ? "bg-green-500 text-white hover:bg-green-600"
+                              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                          }`}
+                        >
+                          {startNum + i}
+                        </button>,
+                      )
+                    }
+                  } else if (question.q_type === "TABLE_COMPLETION") {
+                    let inputIndex = 0
 
-                                for (let i = 0; i < blanks.length; i++) {
-                                  const isAnswered =
-                                    currentAnswer &&
-                                    (typeof currentAnswer === "string"
-                                      ? i === 0
-                                      : typeof currentAnswer === "object" && currentAnswer[i.toString()])
-                                  questionButtons.push(
-                                    <button
-                                      key={`${questionId}_${i}`}
-                                      onClick={() => scrollToQuestion(questionId)}
-                                      className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
-                                        isAnswered
-                                          ? "bg-green-500 text-white hover:bg-green-600"
-                                          : "bg-gray-300 text-gray-700 hover:bg-gray-400"
-                                      }`}
-                                    >
-                                      {startNum + i}
-                                    </button>,
-                                  )
-                                }
-                              } else if (question.q_type === "NOTE_COMPLETION") {
-                                // Add buttons for NOTE_COMPLETION
-                                const blanks = question.q_text?.match(/____+/g) || []
-                                blanks.forEach((_, index) => {
-                                  const inputId = `${questionId}_note_${index}`
-                                  const isAnswered = !!answers[inputId]
-                                  questionButtons.push(
-                                    <button
-                                      key={`${questionId}_note_${index}`}
-                                      onClick={() => {
-                                        scrollToQuestion(questionId)
-                                      }}
-                                      className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
-                                        isAnswered
-                                          ? "bg-green-500 text-white hover:bg-green-600"
-                                          : "bg-gray-300 text-gray-700 hover:bg-gray-400"
-                                      }`}
-                                    >
-                                      {startNum + index}
-                                    </button>,
-                                  )
-                                })
-                              } else if (question.q_type === "SUMMARY_DRAG") {
-                                // Add buttons for SUMMARY_DRAG
-                                const blanks = question.q_text?.match(/____+/g) || []
-                                blanks.forEach((_, index) => {
-                                  const inputId = `${questionId}_blank_${index + 1}` // Note: blankIndex is 1-based
-                                  const isAnswered = !!answers[inputId]
-                                  questionButtons.push(
-                                    <button
-                                      key={`${questionId}_blank_${index + 1}`}
-                                      onClick={() => {
-                                        scrollToQuestion(questionId)
-                                      }}
-                                      className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
-                                        isAnswered
-                                          ? "bg-green-500 text-white hover:bg-green-600"
-                                          : "bg-gray-300 text-gray-700 hover:bg-gray-400"
-                                      }`}
-                                    >
-                                      {startNum + index}
-                                    </button>,
-                                  )
-                                })
-                              } else {
-                                const isAnswered = !!answers[questionId]
-                                questionButtons.push(
-                                  <button
-                                    key={questionId}
-                                    onClick={() => scrollToQuestion(questionId)}
-                                    className={`w-8 h-8 text-xs font-medium rounded transition-colors ${
-                                      isAnswered
-                                        ? "bg-green-500 text-white hover:bg-green-600"
-                                        : "bg-gray-300 text-gray-700 hover:bg-gray-400"
-                                    }`}
-                                  >
-                                    {startNum}
-                                  </button>,
-                                )
-                              }
-                            })
+                    if (question.rows && Array.isArray(question.rows)) {
+                      question.rows.forEach((row, rowIndex) => {
+                        if (row.cells && Array.isArray(row.cells)) {
+                          row.cells.forEach((cell, cellIndex) => {
+                            if (cell === "" || cell === "_") {
+                              const tableQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
+                              const isAnswered = !!answers[tableQuestionId]
+                              questionButtons.push(
+                                <button
+                                  key={tableQuestionId}
+                                  onClick={() => scrollToQuestion(questionId)}
+                                  className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                                    isAnswered
+                                      ? "bg-green-500 text-white hover:bg-green-600"
+                                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                  }`}
+                                >
+                                  {startNum + inputIndex}
+                                </button>,
+                              )
+                              inputIndex++
+                            }
                           })
+                        }
+                      })
+                    } else if (question.table_structure?.rows) {
+                      question.table_structure.rows.forEach((row, rowIndex) => {
+                        Object.entries(row).forEach(([key, value], cellIndex) => {
+                          if (value === "" || value === "_") {
+                            const tableQuestionId = `${questionId}_table_${rowIndex}_${cellIndex}`
+                            const isAnswered = !!answers[tableQuestionId]
+                            questionButtons.push(
+                              <button
+                                key={tableQuestionId}
+                                onClick={() => scrollToQuestion(questionId)}
+                                className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                                  isAnswered
+                                    ? "bg-green-500 text-white hover:bg-green-600"
+                                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                }`}
+                              >
+                                {startNum + inputIndex}
+                              </button>,
+                            )
+                            inputIndex++
+                          }
+                        })
+                      })
+                    }
+                  } else if (question.q_type === "MATCHING_INFORMATION") {
+                    const rowCount = (question as any).rows?.length || 1
+                    for (let i = 0; i < rowCount; i++) {
+                      const rowQuestionId = `${questionId}_row_${i}`
+                      const isAnswered = !!answers[rowQuestionId]
+                      questionButtons.push(
+                        <button
+                          key={rowQuestionId}
+                          onClick={() => scrollToQuestion(questionId)}
+                          className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                            isAnswered
+                              ? "bg-green-500 text-white hover:bg-green-600"
+                              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                          }`}
+                        >
+                          {startNum + i}
+                        </button>,
+                      )
+                    }
+                  } else if (question.q_type === "SENTENCE_COMPLETION") {
+                    const blanks = question.q_text?.match(/_+/g) || []
+                    const currentAnswer = answers[questionId]
 
-                          return questionButtons
-                        })()}
-                      </div>
-                    )}
+                    for (let i = 0; i < blanks.length; i++) {
+                      const isAnswered =
+                        currentAnswer &&
+                        (typeof currentAnswer === "string"
+                          ? i === 0
+                          : typeof currentAnswer === "object" && currentAnswer[i.toString()])
+                      questionButtons.push(
+                        <button
+                          key={`${questionId}_${i}`}
+                          onClick={() => scrollToQuestion(questionId)}
+                          className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                            isAnswered
+                              ? "bg-green-500 text-white hover:bg-green-600"
+                              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                          }`}
+                        >
+                          {startNum + i}
+                        </button>,
+                      )
+                    }
+                  } else if (question.q_type === "NOTE_COMPLETION") {
+                    // Check blanks in question.options for NOTE_COMPLETION
+                    const optionsText =
+                      typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+                    const blanks = optionsText.match(/____+/g) || []
+                    blanks.forEach((_, index) => {
+                      const inputId = `${questionId}_note_${index}`
+                      const isAnswered = !!answers[inputId]
+                      questionButtons.push(
+                        <button
+                          key={`${questionId}_note_${index}`}
+                          onClick={() => scrollToQuestion(questionId)}
+                          className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                            isAnswered
+                              ? "bg-green-500 text-white hover:bg-green-600"
+                              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                          }`}
+                        >
+                          {startNum + index}
+                        </button>,
+                      )
+                    })
+                  } else if (question.q_type === "SUMMARY_DRAG") {
+                    const blanks = question.q_text?.match(/____+/g) || []
+                    blanks.forEach((_, index) => {
+                      const inputId = `${questionId}_blank_${index + 1}`
+                      const isAnswered = !!answers[inputId]
+                      questionButtons.push(
+                        <button
+                          key={`${questionId}_blank_${index + 1}`}
+                          onClick={() => scrollToQuestion(questionId)}
+                          className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                            isAnswered
+                              ? "bg-green-500 text-white hover:bg-green-600"
+                              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                          }`}
+                        >
+                          {startNum + index}
+                        </button>,
+                      )
+                    })
+                  } else if (question.q_type === "SENTENCE_ENDINGS") {
+                    const optionsCount = question.options ? Object.keys(question.options).length : 0
+                    for (let i = 0; i < optionsCount; i++) {
+                      const optionKey = (i + 1).toString()
+                      const isAnswered = !!sentenceEndingsAnswers[questionId]?.[optionKey]
+                      questionButtons.push(
+                        <button
+                          key={`${questionId}_option_${optionKey}`}
+                          onClick={() => scrollToQuestion(questionId)}
+                          className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                            isAnswered
+                              ? "bg-green-500 text-white hover:bg-green-600"
+                              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                          }`}
+                        >
+                          {startNum + i}
+                        </button>,
+                      )
+                    }
+                  } else {
+                    const isAnswered = !!answers[questionId]
+                    questionButtons.push(
+                      <button
+                        key={questionId}
+                        onClick={() => scrollToQuestion(questionId)}
+                        className={`w-8 h-8 text-sm font-medium rounded transition-colors ${
+                          isAnswered
+                            ? "bg-green-500 text-white hover:bg-green-600"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        }`}
+                      >
+                        {startNum}
+                      </button>,
+                    )
+                  }
+                })
+              })
 
-                    {/* Show "X of Y" for inactive parts */}
-                    {!isActive && (
-                      <span className="text-sm text-gray-600">
-                        {answeredCount} of {totalQuestions}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+              return questionButtons
+            })()}
           </div>
 
           {/* Submit Button */}
-          <button
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="w-10 h-10 bg-gray-900 text-white rounded flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50"
-          >
-            ✓
-          </button>
+          <Button onClick={handleSubmit} className="bg-black hover:bg-gray-800 text-white">
+            Submit
+          </Button>
         </div>
       </div>
 
-      {AlertComponent}
-
-      {showConfirmModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Confirm Submission</h2>
-            <p className="text-gray-600 dark:text-gray-300 mb-6">
+      {/* Confirmation Modal */}
+      <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
+        <DialogContent className={`${colorStyles.cardBg} ${colorStyles.text}`}>
+          <DialogHeader>
+            <DialogTitle className={colorStyles.text}>Confirm Submission</DialogTitle>
+          </DialogHeader>
+          <div className="text-center py-6">
+            <p className={`text-lg mb-6 ${colorStyles.text}`}>
               Are you sure you want to submit your test? This action cannot be undone.
             </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
+            <div className="flex justify-center gap-4">
+              <Button variant="outline" onClick={() => setShowConfirmModal(false)}>
                 Cancel
-              </button>
-              <button
-                onClick={submitAnswers}
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSubmitting ? "Submitting..." : "Yes, Submit"}
-              </button>
+              </Button>
+              <Button onClick={submitAnswers} className="bg-red-500 hover:bg-red-600 text-white">
+                Submit
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Completion Modal */}
+      <Dialog open={showCompletionModal} onOpenChange={setShowCompletionModal}>
+        <DialogContent className={`${colorStyles.cardBg} ${colorStyles.text}`}>
+          <DialogHeader>
+            <DialogTitle className={colorStyles.text}>Test Completed!</DialogTitle>
+          </DialogHeader>
+          <div className="text-center py-6">
+            <p className={`text-lg mb-6 ${colorStyles.text}`}>
+              Congratulations! You have completed all sections of the test.
+            </p>
+            <Button onClick={() => router.push("/")} className="bg-green-500 hover:bg-green-600 text-white">
+              Go to Dashboard
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
