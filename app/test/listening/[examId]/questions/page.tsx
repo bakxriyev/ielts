@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, type ReactElement } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { markSectionCompleted, areAllSectionsCompleted } from "../../../../../lib/save-test-progres"
@@ -277,22 +277,81 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     }
   }
 
-  // ... existing code ...
+  const handleTableCellInputChange = (
+    questionGroupId: string,
+    rQuestionId: string,
+    rowIndex: number,
+    cellIndex: number,
+    inputIndex: number,
+    value: string,
+  ) => {
+    const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
+    const answersArray = JSON.parse(localStorage.getItem(answersKey) || "[]")
+
+    const answerKey = `${rowIndex}_${cellIndex}_${inputIndex}`
+
+    // Find existing answer for this specific cell input
+    const existingAnswerIndex = answersArray.findIndex(
+      (item: any) =>
+        item.l_questionsID === Number.parseInt(rQuestionId) &&
+        item.question_type === "TABLE_COMPLETION" &&
+        item.answer &&
+        item.answer[answerKey],
+    )
+
+    if (value.trim() === "") {
+      // Remove answer if empty
+      if (existingAnswerIndex !== -1) {
+        answersArray.splice(existingAnswerIndex, 1)
+      }
+    } else {
+      // Add or update answer
+      if (existingAnswerIndex !== -1) {
+        answersArray[existingAnswerIndex].answer = { [answerKey]: value }
+      } else {
+        answersArray.push({
+          userId: userId,
+          listening_id: Number.parseInt(questionGroupId),
+          l_questionsID: Number.parseInt(rQuestionId),
+          examId: Number.parseInt(getExamIdForAnswers()),
+          question_type: "TABLE_COMPLETION",
+          answer: { [answerKey]: value },
+        })
+      }
+    }
+
+    localStorage.setItem(answersKey, JSON.stringify(answersArray))
+
+    // Update local state for UI
+    const stateKey = `${rQuestionId}_table_${answerKey}`
+    setAnswers((prev) => ({
+      ...prev,
+      [stateKey]: value,
+    }))
+  }
 
   const getQuestionCount = (question: LQuestion): number => {
     if (question.q_type === "TABLE_COMPLETION") {
       let inputCount = 0
-      if (question.rows && Array.isArray(question.rows)) {
-        question.rows.forEach((row: any) => {
-          if (row.cells && Array.isArray(row.cells)) {
-            row.cells.forEach((cell: any) => {
-              if (cell === "" || cell === "_" || (typeof cell === "string" && /_+/.test(cell))) {
-                inputCount++
-              }
-            })
+      const rows = Array.isArray(question.rows) ? question.rows : question.rows?.cells || []
+
+      rows.forEach((rowOrCells: any, rowIndex: number) => {
+        const cells = Array.isArray(rowOrCells) ? rowOrCells : rowOrCells.cells || []
+
+        // Count inputs in row label (if provided and it's not just cells)
+        if (rowOrCells && typeof rowOrCells === "object" && rowOrCells.label && typeof rowOrCells.label === "string") {
+          const labelBlanks = rowOrCells.label.match(/____+/g) || []
+          inputCount += labelBlanks.length
+        }
+
+        // Count inputs in cells
+        cells.forEach((cell: any) => {
+          if (typeof cell === "string") {
+            const cellBlanks = cell.match(/____+/g) || []
+            inputCount += cellBlanks.length
           }
         })
-      }
+      })
       return inputCount > 0 ? inputCount : 1
     } else if (question.q_type === "MCQ_MULTI") {
       const correctAnswersCount = Array.isArray(question.correct_answers) ? question.correct_answers.length : 1
@@ -368,8 +427,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     }
   }
 
-  // ... existing code ...
-
   const getGlobalQuestionNumber = (questionId: number): number => {
     const allQuestions = getAllQuestions()
     let counter = 1
@@ -399,8 +456,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
     return counter
   }
-
-  // ... existing code ...
 
   const getFlowChartStepQuestionNumber = (questionId: string, stepNum: string): number => {
     const baseQuestionId = questionId.split("_")[0]
@@ -961,33 +1016,56 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     const questionIdStr = question.id.toString()
 
     if (question.q_type === "TABLE_COMPLETION") {
-      const tableAnswersKey = `${questionIdStr}_answer`
-      const answersForThisTableQuestion = answers[tableAnswersKey]
+      const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
+      const savedAnswers = localStorage.getItem(answersKey)
+      const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
 
-      if (answersForThisTableQuestion && typeof answersForThisTableQuestion === "object") {
-        let currentCellIndex = 0
-        if (question.rows && Array.isArray(question.rows)) {
-          for (let r = 0; r < question.rows.length; r++) {
-            const row = question.rows[r]
-            if (row.cells && Array.isArray(row.cells)) {
-              for (let c = 0; c < row.cells.length; c++) {
-                const cell = row.cells[c]
-                const isEmptyOrUnderscore = cell === "" || cell === "_" || (typeof cell === "string" && /_+/.test(cell))
-                if (isEmptyOrUnderscore) {
-                  if (currentCellIndex === subIndex) {
-                    const answerKey = `${r}_${c}`
-                    return (
-                      answersForThisTableQuestion[answerKey] !== undefined &&
-                      answersForThisTableQuestion[answerKey] !== ""
-                    )
-                  }
-                  currentCellIndex++
-                }
-              }
+      let currentInputIndex = 0
+      const rows = Array.isArray(question.rows) ? question.rows : question.rows?.cells || []
+
+      rows.forEach((rowOrCells: any, rowIndex: number) => {
+        const cells = Array.isArray(rowOrCells) ? rowOrCells : rowOrCells.cells || []
+
+        // Check row label inputs
+        if (rowOrCells && typeof rowOrCells === "object" && rowOrCells.label && typeof rowOrCells.label === "string") {
+          const labelBlanks = rowOrCells.label.match(/____+/g) || []
+          for (let i = 0; i < labelBlanks.length; i++) {
+            if (currentInputIndex === subIndex) {
+              const answerKey = `${rowIndex}_label_${i}`
+              const answerEntry = answersArray.find(
+                (item: any) =>
+                  item.l_questionsID === question.id &&
+                  item.question_type === "TABLE_COMPLETION" &&
+                  item.answer &&
+                  item.answer[answerKey],
+              )
+              return answerEntry !== undefined && answerEntry.answer[answerKey] !== ""
             }
+            currentInputIndex++
           }
         }
-      }
+
+        // Check cell inputs
+        cells.forEach((cell: any, cellIndex: number) => {
+          if (typeof cell === "string") {
+            const cellBlanks = cell.match(/____+/g) || []
+            for (let i = 0; i < cellBlanks.length; i++) {
+              if (currentInputIndex === subIndex) {
+                const answerKey = `${rowIndex}_${cellIndex}_${i}`
+                const answerEntry = answersArray.find(
+                  (item: any) =>
+                    item.l_questionsID === question.id &&
+                    item.question_type === "TABLE_COMPLETION" &&
+                    item.answer &&
+                    item.answer[answerKey],
+                )
+                return answerEntry !== undefined && answerEntry.answer[answerKey] !== ""
+              }
+              currentInputIndex++
+            }
+          }
+        })
+      })
       return false
     } else if (question.q_type === "NOTE_COMPLETION") {
       const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
@@ -1176,8 +1254,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     return { start: 0, end: 0 }
   }
 
-  // ... existing code ...
-
   const getPartBasedQuestionNumber = (questionId: number | string, part: string): number => {
     const allQuestions = getAllQuestions()
     let currentQuestionNumber = 0
@@ -1194,8 +1270,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
     }
     return 1
   }
-
-  // ... existing code ...
 
   const getTableCellPartBasedQuestionNumber = (
     questionId: string,
@@ -1214,21 +1288,17 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
       if (q.part === part) {
         if (q.id.toString() === baseQuestionId) {
           let cellCounter = 0
-          if (q.rows && Array.isArray(q.rows)) {
-            for (let r = 0; r < q.rows.length; r++) {
-              const row = q.rows[r]
-              if (row.cells && Array.isArray(row.cells)) {
-                for (let c = 0; c < row.cells.length; c++) {
-                  const cell = row.cells[c]
-                  const isEmptyOrUnderscore = cell === "" || cell === "_"
-                  const hasUnderscores = typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
-                  if (isEmptyOrUnderscore || hasUnderscores) {
-                    if (r === rowIndex && c === cellIndex) {
-                      return currentQuestionNumber + cellCounter + 1
-                    }
-                    cellCounter++
-                  }
+          const cells = Array.isArray(q.rows) ? q.rows[rowIndex] : q.rows?.cells?.[rowIndex]
+          if (cells) {
+            for (let c = 0; c < cells.length; c++) {
+              const cell = cells[c]
+              const isEmptyOrUnderscore = cell === "" || cell === "_"
+              const hasUnderscores = typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+              if (isEmptyOrUnderscore || hasUnderscores) {
+                if (c === cellIndex) {
+                  return currentQuestionNumber + cellCounter + 1
                 }
+                cellCounter++
               }
             }
           }
@@ -2072,12 +2142,8 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 handleAnswerChange(questionId, newAnswers)
                               }}
                               className={`flex items-center gap-3 cursor-pointer select-none px-[3px] py-[1px] rounded-md transition-all duration-100 ${
-                                isSelected
-                                  ? "bg-blue-50"
-                                  : canSelect
-                                    ? "hover:bg-gray-50"
-                                    : "opacity-50 cursor-not-allowed"
-                              }`}
+                                isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                              } ${!canSelect ? "opacity-50 cursor-not-allowed" : ""}`}
                             >
                               <input
                                 type="checkbox"
@@ -2251,122 +2317,107 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
 
-                    {question.q_type === "TABLE_COMPLETION" && (
+                    {question.q_type === "TABLE_COMPLETION" && question.columns && question.rows && (
                       <div className="overflow-x-auto">
                         <table className="w-full border-collapse border-2 border-black">
                           <thead>
-                            <tr>
-                              <th className="border-2 border-black p-2 bg-gray-100 font-bold text-left"></th>
-                              {question.columns?.map((column: string, colIndex: number) => (
+                            <tr className="bg-gray-100">
+                              {question.columns.map((col: string, colIndex: number) => (
                                 <th
                                   key={colIndex}
-                                  className="border-2 border-black p-2 bg-gray-100 font-bold text-center"
-                                >
-                                  {column}
-                                </th>
+                                  className="border-2 border-black p-3 text-left font-normal text-gray-900"
+                                  dangerouslySetInnerHTML={{ __html: col }}
+                                />
                               ))}
                             </tr>
                           </thead>
                           <tbody>
-                            {question.rows?.map((row: any, rowIndex: number) => (
-                              <tr key={rowIndex}>
-                                <td className="border-2 border-black p-2 bg-gray-50 font-bold text-left">
-                                  {row.label}
-                                </td>
-                                {row.cells?.map((cell: string, cellIndex: number) => {
-                                  const isEmptyOrUnderscore = cell === "" || cell === "_"
-                                  const hasUnderscores =
-                                    typeof cell === "string" && /_+/.test(cell) && !isEmptyOrUnderscore
+                            {question.rows.map((row: any, rowIndex: number) => {
+                              // Handle both array format and object format for backward compatibility
+                              const cells = Array.isArray(row) ? row : row.cells || []
 
-                                  if (isEmptyOrUnderscore || hasUnderscores) {
-                                    const tableAnswersKey = `${questionId}_answer`
-                                    const tableAnswers = answers[tableAnswersKey] || {}
-                                    const cellKey = `${rowIndex}_${cellIndex}`
+                              let currentInputIndex = 0
 
-                                    let inputQuestionNumber = questionStartNum
-                                    for (let r = 0; r < rowIndex; r++) {
-                                      for (let c = 0; c < question.rows[r].cells.length; c++) {
-                                        const prevCell = question.rows[r].cells[c]
-                                        if (
-                                          prevCell === "" ||
-                                          prevCell === "_" ||
-                                          (typeof prevCell === "string" && /_+/.test(prevCell))
-                                        ) {
-                                          inputQuestionNumber++
-                                        }
-                                      }
-                                    }
+                              // Count all previous inputs to get correct question numbers
+                              for (let r = 0; r < rowIndex; r++) {
+                                const prevRow = question.rows[r]
+                                const prevCells = Array.isArray(prevRow) ? prevRow : prevRow.cells || []
+
+                                prevCells.forEach((cell: any) => {
+                                  if (typeof cell === "string") {
+                                    currentInputIndex += (cell.match(/____+/g) || []).length
+                                  }
+                                })
+                              }
+
+                              return (
+                                <tr key={rowIndex}>
+                                  {cells.map((cell: string, cellIndex: number) => {
+                                    // Count inputs in previous cells of this row
                                     for (let c = 0; c < cellIndex; c++) {
-                                      const prevCell = row.cells[c]
-                                      if (
-                                        prevCell === "" ||
-                                        prevCell === "_" ||
-                                        (typeof prevCell === "string" && /_+/.test(prevCell))
-                                      ) {
-                                        inputQuestionNumber++
+                                      const prevCell = cells[c]
+                                      if (typeof prevCell === "string") {
+                                        currentInputIndex += (prevCell.match(/____+/g) || []).length
                                       }
                                     }
+
+                                    const cellStartInputIndex = currentInputIndex
 
                                     return (
                                       <td key={cellIndex} className="border-2 border-black p-2">
-                                        <div className="min-w-[150px]">
-                                          {hasUnderscores ? (
-                                            <div className="flex flex-wrap items-center gap-1">
-                                              {cell.split(/(_+)/).map((part: string, partIndex: number) => {
-                                                if (/_+/.test(part)) {
-                                                  return (
-                                                    <Input
-                                                      key={partIndex}
-                                                      value={tableAnswers[cellKey] || ""}
-                                                      onChange={(e) => {
-                                                        const tableIdentifier = `${questionId}_table_${rowIndex}_${cellIndex}`
-                                                        handleAnswerChange(
-                                                          questionId,
-                                                          {
-                                                            ...tableAnswers,
-                                                            [cellKey]: e.target.value,
-                                                          },
-                                                          tableIdentifier,
-                                                        )
-                                                      }}
-                                                      className="inline-block w-32 text-sm bg-white border-2 border-black focus:border-black text-center"
-                                                      placeholder={inputQuestionNumber.toString()}
-                                                    />
-                                                  )
-                                                }
-                                                return part ? (
-                                                  <span key={partIndex} className="text-gray-900 font-bold">
-                                                    {part}
-                                                  </span>
-                                                ) : null
-                                              })}
-                                            </div>
-                                          ) : (
-                                            <Input
-                                              value={tableAnswers[cellKey] || ""}
-                                              onChange={(e) =>
-                                                handleAnswerChange(tableAnswersKey, {
-                                                  ...tableAnswers,
-                                                  [cellKey]: e.target.value,
-                                                })
+                                        {typeof cell === "string" && cell.includes("____") ? (
+                                          <div className="flex flex-wrap items-center gap-1">
+                                            {cell.split(/(____+)/).map((part: string, partIndex: number) => {
+                                              if (/____+/.test(part)) {
+                                                const answersKey = `listening_answers_${getExamIdForAnswers()}_${userId}`
+                                                const savedAnswers = localStorage.getItem(answersKey)
+                                                const answersArray: any[] = savedAnswers ? JSON.parse(savedAnswers) : []
+
+                                                const inputIndexInCell = Math.floor(partIndex / 2)
+                                                const answerKey = `${rowIndex}_${cellIndex}_${inputIndexInCell}`
+                                                const answerEntry = answersArray.find(
+                                                  (item: any) =>
+                                                    item.l_questionsID === question.id &&
+                                                    item.question_type === "TABLE_COMPLETION" &&
+                                                    item.answer &&
+                                                    item.answer[answerKey],
+                                                )
+                                                const currentValue = answerEntry?.answer?.[answerKey] || ""
+
+                                                const questionNum =
+                                                  questionStartNum + cellStartInputIndex + inputIndexInCell
+
+                                                return (
+                                                  <Input
+                                                    key={partIndex}
+                                                    value={currentValue}
+                                                    onChange={(e) =>
+                                                      handleTableCellInputChange(
+                                                        questionGroup.id.toString(),
+                                                        question.id.toString(),
+                                                        rowIndex,
+                                                        cellIndex,
+                                                        inputIndexInCell,
+                                                        e.target.value,
+                                                      )
+                                                    }
+                                                    placeholder={questionNum.toString()}
+                                                    className="w-20 text-center"
+                                                  />
+                                                )
                                               }
-                                              className="w-full text-sm bg-white border-2 border-black focus:border-black text-center"
-                                              placeholder={inputQuestionNumber.toString()}
-                                            />
-                                          )}
-                                        </div>
+                                              return <span key={partIndex} dangerouslySetInnerHTML={{ __html: part }} />
+                                            })}
+                                          </div>
+                                        ) : (
+                                          <div dangerouslySetInnerHTML={{ __html: cell || "" }} />
+                                        )}
                                       </td>
                                     )
-                                  }
-
-                                  return (
-                                    <td key={cellIndex} className="border-2 border-black p-2">
-                                      <span className="text-gray-900 font-bold">{cell}</span>
-                                    </td>
-                                  )
-                                })}
-                              </tr>
-                            ))}
+                                  })}
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -2831,215 +2882,210 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       </div>
                     )}
                     {question.q_type === "SUMMARY_DRAG" &&
-  (() => {
-    let optionsData: Record<string, string> = {}
-    let choicesArray: string[] = []
-    let headersData: string[] = []
+                      (() => {
+                        let optionsData: Record<string, string> = {}
+                        let choicesArray: string[] = []
+                        let headersData: string[] = []
 
-    // ✅ OPTIONS ni parse qilish
-    if (question.options) {
-      try {
-        optionsData =
-          typeof question.options === "string"
-            ? JSON.parse(question.options)
-            : question.options
-      } catch (e) {
-        console.error("Failed to parse SUMMARY_DRAG options:", e)
-        optionsData = {}
-      }
-    }
+                        // ✅ OPTIONS ni parse qilish
+                        if (question.options) {
+                          try {
+                            optionsData =
+                              typeof question.options === "string" ? JSON.parse(question.options) : question.options
+                          } catch (e) {
+                            console.error("Failed to parse SUMMARY_DRAG options:", e)
+                            optionsData = {}
+                          }
+                        }
 
-    // ✅ CHOICES ni parse qilish (asosiy tuzatish shu yerda)
-    if (question.choices) {
-      try {
-        const parsed =
-          typeof question.choices === "string"
-            ? JSON.parse(question.choices)
-            : question.choices
+                        // ✅ CHOICES ni parse qilish (asosiy tuzatish shu yerda)
+                        if (question.choices) {
+                          try {
+                            const parsed =
+                              typeof question.choices === "string" ? JSON.parse(question.choices) : question.choices
 
-        choicesArray = Array.isArray(parsed)
-          ? parsed
-          : parsed
-          ? Object.values(parsed)
-          : []
-      } catch (e) {
-        console.error("Failed to parse SUMMARY_DRAG choices:", e)
-        choicesArray = []
-      }
-    }
+                            choicesArray = Array.isArray(parsed) ? parsed : parsed ? Object.values(parsed) : []
+                          } catch (e) {
+                            console.error("Failed to parse SUMMARY_DRAG choices:", e)
+                            choicesArray = []
+                          }
+                        }
 
-    // ✅ HEADERS ni tekshirish
-    if (question.rows?.headers && Array.isArray(question.rows.headers)) {
-      headersData = question.rows.headers
-    }
+                        // ✅ HEADERS ni tekshirish
+                        if (question.rows?.headers && Array.isArray(question.rows.headers)) {
+                          headersData = question.rows.headers
+                        }
 
-    const usedChoices = new Set<string>()
-    if (currentAnswer && typeof currentAnswer === "object") {
-      Object.values(currentAnswer).forEach((v) => v && usedChoices.add(v as string))
-    }
+                        const usedChoices = new Set<string>()
+                        if (currentAnswer && typeof currentAnswer === "object") {
+                          Object.values(currentAnswer).forEach((v) => v && usedChoices.add(v as string))
+                        }
 
-    // ✅ Filter ishlaydigan joy — endi xato chiqmaydi
-    const availableChoices = choicesArray.filter((c) => !usedChoices.has(c))
+                        // ✅ Filter ishlaydigan joy — endi xato chiqmaydi
+                        const availableChoices = choicesArray.filter((c) => !usedChoices.has(c))
 
-    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, choice: string) => {
-      e.dataTransfer.effectAllowed = "move"
-      e.dataTransfer.setData("text/plain", choice)
-      e.currentTarget.classList.add("opacity-60")
-      setDraggedItem(choice)
-      setDragSource("choices")
-    }
+                        const handleDragStart = (e: React.DragEvent<HTMLDivElement>, choice: string) => {
+                          e.dataTransfer.effectAllowed = "move"
+                          e.dataTransfer.setData("text/plain", choice)
+                          e.currentTarget.classList.add("opacity-60")
+                          setDraggedItem(choice)
+                          setDragSource("choices")
+                        }
 
-    const handleDragStartFromGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
-      const val = currentAnswer?.[key]
-      if (val) {
-        e.dataTransfer.effectAllowed = "move"
-        e.dataTransfer.setData("text/plain", val)
-        e.dataTransfer.setData("removeFrom", key)
-        e.currentTarget.classList.add("opacity-60")
-        setDraggedItem(val)
-        setDragSource("gap")
-      }
-    }
+                        const handleDragStartFromGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
+                          const val = currentAnswer?.[key]
+                          if (val) {
+                            e.dataTransfer.effectAllowed = "move"
+                            e.dataTransfer.setData("text/plain", val)
+                            e.dataTransfer.setData("removeFrom", key)
+                            e.currentTarget.classList.add("opacity-60")
+                            setDraggedItem(val)
+                            setDragSource("gap")
+                          }
+                        }
 
-    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      e.currentTarget.classList.add("bg-blue-50", "border-blue-500")
-    }
+                        const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.add("bg-blue-50", "border-blue-500")
+                        }
 
-    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-      e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
-    }
+                        const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
+                        }
 
-    const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
-      e.currentTarget.classList.remove("opacity-60")
-    }
+                        const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.currentTarget.classList.remove("opacity-60")
+                        }
 
-    const handleDropOnGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
-      e.preventDefault()
-      e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
-      const choice = e.dataTransfer.getData("text/plain")
-      const removeFrom = e.dataTransfer.getData("removeFrom")
-      if (choice) {
-        const newAnswer = { ...currentAnswer, [key]: choice }
-        if (removeFrom && removeFrom !== key) delete newAnswer[removeFrom]
-        handleAnswerChange(question.id.toString(), newAnswer, `${question.id}_summary_`)
-      }
-      setDraggedItem(null)
-      setDragSource(null)
-    }
+                        const handleDropOnGap = (e: React.DragEvent<HTMLDivElement>, key: string) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
+                          const choice = e.dataTransfer.getData("text/plain")
+                          const removeFrom = e.dataTransfer.getData("removeFrom")
+                          if (choice) {
+                            const newAnswer = { ...currentAnswer, [key]: choice }
+                            if (removeFrom && removeFrom !== key) delete newAnswer[removeFrom]
+                            handleAnswerChange(question.id.toString(), newAnswer, `${question.id}_summary_`)
+                          }
+                          setDraggedItem(null)
+                          setDragSource(null)
+                        }
 
-    const handleDropOnChoices = (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
-      const removeFrom = e.dataTransfer.getData("removeFrom")
-      if (removeFrom) {
-        const newAnswer = { ...currentAnswer }
-        delete newAnswer[removeFrom]
-        handleAnswerChange(question.id.toString(), newAnswer, `${question.id}_summary_`)
-      }
-      setDraggedItem(null)
-      setDragSource(null)
-    }
+                        const handleDropOnChoices = (e: React.DragEvent<HTMLDivElement>) => {
+                          e.preventDefault()
+                          e.currentTarget.classList.remove("bg-blue-50", "border-blue-500")
+                          const removeFrom = e.dataTransfer.getData("removeFrom")
+                          if (removeFrom) {
+                            const newAnswer = { ...currentAnswer }
+                            delete newAnswer[removeFrom]
+                            handleAnswerChange(question.id.toString(), newAnswer, `${question.id}_summary_`)
+                          }
+                          setDraggedItem(null)
+                          setDragSource(null)
+                        }
 
-    return (
-      <div className="space-y-5">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left column (optionsData) */}
-          <div className="space-y-2">
-            <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
-              {headersData[0]}
-            </div>
+                        return (
+                          <div className="space-y-5">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                              {/* Left column (optionsData) */}
+                              <div className="space-y-2">
+                                <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
+                                  {headersData[0]}
+                                </div>
 
-            {Object.entries(optionsData).map(([key, text], idx) => {
-              const currentValue = currentAnswer?.[key]
-              const num = questionStartNum + idx
-              const isAnswered = currentValue !== undefined && currentValue !== ""
-              return (
-                <div key={key} className="flex items-center justify-between gap-3">
-                  <div
-                    className="text-gray-900 font-medium flex-1"
-                    style={{ fontSize: `${textSize}px` }}
-                  >
-                    {text}
-                  </div>
-                  <div
-                    className={`border-2 border-dashed rounded-md px-3 py-1 w-[160px] text-center cursor-pointer transition-all ${
-                      isAnswered
-                        ? "bg-green-50 border-green-500"
-                        : "bg-white border-gray-400 hover:border-[#4B61D1]"
-                    }`}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDropOnGap(e, key)}
-                  >
-                    {currentValue ? (
-                      <div
-                        draggable
-                        onDragStart={(e) => handleDragStartFromGap(e, key)}
-                        onDragEnd={handleDragEnd}
-                        className="cursor-move text-gray-900 font-semibold truncate hover:opacity-70"
-                        style={{ fontSize: `${textSize}px` }}
-                        title="Drag back to options to remove"
-                      >
-                        {currentValue}
-                      </div>
-                    ) : (
-                      <span
-                        className="text-gray-400 font-semibold"
-                        style={{ fontSize: `${textSize}px` }}
-                      >
-                        {num}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                                {Object.entries(optionsData).map(([key, text], idx) => {
+                                  const currentValue = currentAnswer?.[key]
+                                  const num = questionStartNum + idx
+                                  const isAnswered = currentValue !== undefined && currentValue !== ""
+                                  return (
+                                    <div key={key} className="flex items-center justify-between gap-3">
+                                      <div
+                                        className="text-gray-900 font-medium flex-1"
+                                        style={{ fontSize: `${textSize}px` }}
+                                      >
+                                        {text}
+                                      </div>
+                                      <div
+                                        className={`border-2 border-dashed rounded-md px-3 py-1 w-[160px] text-center cursor-pointer transition-all ${
+                                          isAnswered
+                                            ? "bg-green-50 border-green-500"
+                                            : "bg-white border-gray-400 hover:border-[#4B61D1]"
+                                        }`}
+                                        onDragOver={handleDragOver}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={(e) => handleDropOnGap(e, key)}
+                                      >
+                                        {currentValue ? (
+                                          <div
+                                            draggable
+                                            onDragStart={(e) => handleDragStartFromGap(e, key)}
+                                            onDragEnd={handleDragEnd}
+                                            className="cursor-move text-gray-900 font-semibold truncate hover:opacity-70"
+                                            style={{ fontSize: `${textSize}px` }}
+                                            title="Drag back to options to remove"
+                                          >
+                                            {currentValue}
+                                          </div>
+                                        ) : (
+                                          <span
+                                            className="text-gray-400 font-semibold"
+                                            style={{ fontSize: `${textSize}px` }}
+                                          >
+                                            {num}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
 
-          {/* Right column (choices) */}
-          <div className="space-y-2">
-            <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
-              {headersData[1]}
-            </div>
+                              {/* Right column (choices) */}
+                              <div className="space-y-2">
+                                <div className="font-bold text-gray-900 mb-1" style={{ fontSize: `${textSize}px` }}>
+                                  {headersData[1]}
+                                </div>
 
-            <div
-              className="border-2 border-dashed border-gray-300 rounded-md px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors min-h-[40px] flex items-center justify-center"
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDropOnChoices}
-            >
-              <span className="text-sm text-gray-500">Drop here to remove</span>
-            </div>
+                                <div
+                                  className="border-2 border-dashed border-gray-300 rounded-md px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors min-h-[40px] flex items-center justify-center"
+                                  onDragOver={handleDragOver}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={handleDropOnChoices}
+                                >
+                                  <span className="text-sm text-gray-500">Drop here to remove</span>
+                                </div>
 
-            <div className="space-y-2">
-              {availableChoices.map((choice, idx) => (
-                <div
-                  key={idx}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, choice)}
-                  onDragEnd={handleDragEnd}
-                  className={`border border-gray-400 rounded-md px-3 py-2 text-center cursor-move transition-all hover:border-[#4B61D1] hover:shadow ${
-                    draggedItem === choice ? "opacity-60 bg-gray-100" : "bg-white"
-                  }`}
-                >
-                  <span className="text-gray-900 font-medium" style={{ fontSize: `${textSize}px` }}>
-                    {choice}
-                  </span>
-                </div>
-              ))}
+                                <div className="space-y-2">
+                                  {availableChoices.map((choice, idx) => (
+                                    <div
+                                      key={idx}
+                                      draggable
+                                      onDragStart={(e) => handleDragStart(e, choice)}
+                                      onDragEnd={handleDragEnd}
+                                      className={`border border-gray-400 rounded-md px-3 py-1 cursor-move transition-all hover:border-[#4B61D1] hover:shadow ${
+                                        draggedItem === choice ? "opacity-60 bg-gray-100" : "bg-white"
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-center">
+                                        <span
+                                          className="text-gray-900 font-medium"
+                                          style={{ fontSize: `${textSize}px` }}
+                                        >
+                                          {choice}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
 
-              {availableChoices.length === 0 && (
-                <p className="text-sm text-gray-500 text-center mt-2">All options used</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  })()
-}
-
+                                  {availableChoices.length === 0 && (
+                                    <p className="text-sm text-gray-500 text-center mt-2">All options used</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
                   </div>
                 )
               })
