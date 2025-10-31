@@ -1901,14 +1901,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 return `Questions ${questionStartNum}–${groupEndNum}`
                               })()
                             : question.q_type === "NOTE_COMPLETION"
-                              ? (() => {
-                                  const noteQuestions = currentPartQuestions.filter(
-                                    (q) => q.q_type === "NOTE_COMPLETION",
-                                  )
-                                  // Calculate start and end based on all questions in the current part, not just NOTE_COMPLETION ones
-                                  const partRange = getPartQuestionRange(currentPart)
-                                  return `Questions ${partRange.start}–${partRange.end}`
-                                })()
+                              ? `Questions ${questionStartNum}–${questionEndNum}`
                               : `Questions ${questionStartNum}–${questionEndNum}`}
                         </h4>
                       </div>
@@ -1955,7 +1948,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                             <table className="w-full border-2 border-black">
                               <thead>
                                 <tr className="border-b-2 border-black">
-                                  <th className="p-3 bg-white"></th>
+                                  <th className="p-3"></th>
 
                                   {(Array.isArray(question.options)
                                     ? question.options
@@ -1963,7 +1956,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                   ).map((opt: any, idx: number) => (
                                     <th
                                       key={idx}
-                                      className="p-3 text-center bg-white font-bold text-gray-900 border-l-2 border-black"
+                                      className="p-3 text-center font-bold text-gray-900 border-l-2 border-black"
                                       style={{ fontSize: `${textSize}px` }}
                                     >
                                       {opt.text || opt}
@@ -2194,7 +2187,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                           <Input
                                             value={currentAnswer || ""}
                                             onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                                            className="inline-block w-32 px-2 py-1 text-sm bg-white border-2 border-black focus:border-black rounded"
+                                            className="inline-block w-32 px-2 py-1 text-sm bg-white border-2 border-black rounded"
                                             placeholder={questionStartNum.toString()}
                                           />
                                         )}
@@ -2224,7 +2217,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                         <div className="overflow-x-auto">
                           <table className="w-full border-2 border-black text-base">
                             <thead>
-                              <tr className="bg-gray-100 border-b-2 border-black">
+                              <tr className="border-b-2 border-black">
                                 <th
                                   className="p-2 text-left font-bold text-black border-r-2 border-black"
                                   style={{ fontSize: `${textSize}px` }}
@@ -2321,7 +2314,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                       <div className="overflow-x-auto">
                         <table className="w-full border-collapse border-2 border-black">
                           <thead>
-                            <tr className="bg-gray-100">
+                            <tr>
                               {question.columns.map((col: string, colIndex: number) => (
                                 <th
                                   key={colIndex}
@@ -2333,12 +2326,10 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                           </thead>
                           <tbody>
                             {question.rows.map((row: any, rowIndex: number) => {
-                              // Handle both array format and object format for backward compatibility
                               const cells = Array.isArray(row) ? row : row.cells || []
 
                               let currentInputIndex = 0
 
-                              // Count all previous inputs to get correct question numbers
                               for (let r = 0; r < rowIndex; r++) {
                                 const prevRow = question.rows[r]
                                 const prevCells = Array.isArray(prevRow) ? prevRow : prevRow.cells || []
@@ -2353,7 +2344,6 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                               return (
                                 <tr key={rowIndex}>
                                   {cells.map((cell: string, cellIndex: number) => {
-                                    // Count inputs in previous cells of this row
                                     for (let c = 0; c < cellIndex; c++) {
                                       const prevCell = cells[c]
                                       if (typeof prevCell === "string") {
@@ -2402,7 +2392,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                                       )
                                                     }
                                                     placeholder={questionNum.toString()}
-                                                    className="w-20 text-center"
+                                                    className="w-[181px] h-[20px] py-0 leading-[17px] px-2 text-center  border-gray-400 rounded-none text-black bg-white text-sm"
                                                   />
                                                 )
                                               }
@@ -2805,7 +2795,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
 
                     {question.q_type === "NOTE_COMPLETION" && question.options && (
                       <div className="space-y-0">
-                        <div className="bg-white0 rounded-lg p-2 leading-[2.4]">
+                        <div className="bg-white rounded-lg p-2 leading-relaxed">
                           {(() => {
                             const optionsText =
                               typeof question.options === "string" ? question.options : JSON.stringify(question.options)
@@ -2855,8 +2845,8 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                             value={currentAnswer}
                                             onChange={(e) => handleAnswerChange(inputId, e.target.value, inputId)}
                                             placeholder={questionNum.toString()}
-                                            className={`inline-block w-[160px] px-3 py-[3px] text-center text-sm
-                                   bg-white border border-gray-700 rounded-[4px]
+                                            className={`inline-block w-[181px] h-[20px] py-0 leading-[20px] px-2 text-center text-sm
+                                   bg-white  border-gray-700 rounded-none
                                    focus:outline-none focus:ring-[0.5px] focus:ring-black focus:border-black
                                    placeholder-gray-400 transition-all duration-150
                                    ${isAnswered ? "bg-green-50 border-green-500" : ""}`}

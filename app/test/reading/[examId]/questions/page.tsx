@@ -131,7 +131,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   const mainContentContainerRef = useRef<HTMLDivElement>(null)
 
   const [draggedOption, setDraggedOption] = useState<{ key: string; text: string } | null>(null)
-  const [matchingAnswers, setMatchingAnswers] = useState<Record<string, Record<number, string>>>({})
+  const [matchingAnswers, setMatchingAnswers] = useState<
+    Record<string, Record<number, string | { key: string; text: string }>>
+  >({})
 
   const [summaryDragAnswers, setSummaryDragAnswers] = useState<Record<string, Record<number, string>>>({})
 
@@ -1942,10 +1944,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     return { start: startNum, end: endNum }
   }
 
-  const parseMatchingPassage = (text: string, questionId: string) => {
+  const renderMatchingHeadingsPassage = (passage: Passage, questionId: string) => {
     const underscorePattern = /_{2,}/g
-    const parts = text.split(underscorePattern)
-    const matches = [...text.matchAll(underscorePattern)]
+    const parts = passage.reading_text.split(underscorePattern)
+    const matches = [...passage.reading_text.matchAll(underscorePattern)]
 
     const question = testData?.questions.flatMap((q) => q.r_questions || []).find((q) => q.id.toString() === questionId)
 
@@ -1985,7 +1987,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       ...prev,
                       [questionId]: {
                         ...(prev[questionId] || {}),
-                        [positionIndex]: draggedOption.key,
+                        [positionIndex]: { key: draggedOption.key, text: draggedOption.text },
                       },
                     }))
 
@@ -1993,16 +1995,48 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     setDraggedOption(null)
                   }
                 }}
-                className="flex items-center gap-3 my-2 px-4 py-3 border-2 border-dashed border-gray-400 bg-gray-100 rounded-lg w-full cursor-pointer hover:bg-gray-200 transition-colors"
+                className={`flex items-center gap-3 my-2 px-4 py-3 rounded-lg w-full cursor-pointer transition-colors ${
+                  matchingAnswers[questionId]?.[index + 1]
+                    ? "border-2 border-[#4B9FD5] bg-white"
+                    : "border-2 border-dashed border-gray-400 bg-white hover:bg-gray-50"
+                }`}
               >
-                <span className="bg-gray-700 text-white px-2.5 py-1 rounded text-sm font-bold shrink-0">
-                  {getQuestionNumber(questionId) + index}
-                </span>
                 {matchingAnswers[questionId]?.[index + 1] ? (
-                  <div className="flex items-center justify-between w-full">
+                  <div
+                    className="flex items-center justify-between w-full"
+                    draggable={true}
+                    onDragStart={(e) => {
+                      const answer = matchingAnswers[questionId][index + 1]
+                      const answerData =
+                        typeof answer === "object"
+                          ? answer
+                          : {
+                              key: answer,
+                              text: normalizedOptions.find((opt: any) => opt.key === answer)?.text || answer,
+                            }
+                      setDraggedOption(answerData)
+
+                      // Remove from current position when drag starts
+                      const positionIndex = index + 1
+                      const matchingKey = `matching_${positionIndex}`
+
+                      setMatchingAnswers((prev) => {
+                        const updated = { ...prev }
+                        if (updated[questionId]) {
+                          delete updated[questionId][positionIndex]
+                        }
+                        return updated
+                      })
+
+                      handleAnswerChange(matchingKey, "")
+                    }}
+                    onDragEnd={() => setDraggedOption(null)}
+                  >
                     <span className={`font-medium text-base ${colorStyles.text}`}>
-                      {normalizedOptions.find((opt: any) => opt.key === matchingAnswers[questionId][index + 1])?.text ||
-                        matchingAnswers[questionId][index + 1]}
+                      {typeof matchingAnswers[questionId][index + 1] === "object"
+                        ? matchingAnswers[questionId][index + 1].text
+                        : normalizedOptions.find((opt: any) => opt.key === matchingAnswers[questionId][index + 1])
+                            ?.text || matchingAnswers[questionId][index + 1]}
                     </span>
                     <button
                       onClick={(e) => {
@@ -2028,7 +2062,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     </button>
                   </div>
                 ) : (
-                  <span className="text-gray-400 text-sm"></span>
+                  <span className="text-gray-400 text-sm">Drop heading here</span>
                 )}
               </div>
             )}
@@ -2195,6 +2229,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           <span className="text-black" dangerouslySetInnerHTML={{ __html: part }} />
                           {index < parts.length - 1 && (
                             <span className="inline-flex items-center gap-1 mx-1 align-middle">
+                              <span className="text-black font-bold">{startNum + index}</span>
                               <span
                                 onDragOver={(e) => {
                                   e.preventDefault()
@@ -2211,7 +2246,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                     setDraggedOption(null)
                                   }
                                 }}
-                                className="inline-flex items-center gap-2 px-3 py-1 h-[25px] border-2 border-dashed border-gray-400 bg-white rounded cursor-pointer hover:border-gray-500 transition-colors min-w-[140px] justify-center"
+                                className="inline-flex items-center gap-2 px-3 py-1 border-2 border-dashed border-gray-400 bg-white rounded cursor-pointer hover:border-gray-500 transition-colors min-w-[140px] justify-center"
                               >
                                 {/* Question number inside drop zone */}
                                 <span className="text-black text-base font-bold shrink-0">{startNum + index}</span>
@@ -2241,6 +2276,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     </div>
 
                     <div>
+                      <div className="text-sm mb-3 text-black">Choose the correct answer and move it into the gap.</div>
                       <div className="flex flex-wrap gap-2">
                         {availableChoices.map(([key, text]) => (
                           <div
@@ -2816,7 +2852,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       )}
                     </div>
 
-                    <div className="space-y-[1px] ml-[36px] mt-[1px]">
+                    <div className="space-y-[2px] ml-6 mt-[1px]">
                       {["TRUE", "FALSE", "NOT GIVEN"].map((label, index) => {
                         const value = ["A", "B", "C"][index]
                         const isSelected = currentAnswer === value
@@ -2826,8 +2862,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                             key={value}
                             htmlFor={`q${question.id}-${value}`}
                             onClick={() => handleAnswerChange(questionId, value)}
-                            className={`flex items-center gap-2 cursor-pointer select-none px-[2px] py-[1px] rounded-md transition-all duration-100 ${
-                              isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                            className={`flex items-center gap-2 cursor-pointer select-none px-3 py-2 transition-all duration-100 ${
+                              isSelected ? "bg-[#B3D9FF]" : "hover:bg-gray-50"
                             }`}
                           >
                             <input
@@ -2864,7 +2900,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       )}
                     </div>
 
-                    <div className="space-y-[1px] ml-[36px] mt-[1px]">
+                    <div className="space-y-[1px] ml-6 mt-[1px]">
                       {question.options.map((option) => {
                         const isSelected = currentAnswer === option.key
                         return (
@@ -2872,8 +2908,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                             key={option.key}
                             htmlFor={`q${question.id}-${option.key}`}
                             onClick={() => handleAnswerChange(questionId, option.key)}
-                            className={`flex items-center gap-2 cursor-pointer select-none px-[2px] py-[1px] rounded-md transition-all duration-100 ${
-                              isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                            className={`flex items-center gap-2 cursor-pointer select-none px-3 py-2 transition-all duration-100 ${
+                              isSelected ? "bg-[#B3D9FF]" : "hover:bg-gray-50"
                             }`}
                           >
                             <input
@@ -2958,7 +2994,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                         }
                                         // If at limit and trying to select, do nothing (user must deselect first)
                                       }}
-                                      className="flex items-center gap-3 cursor-pointer select-none px-[3px] py-[1px] rounded-md transition-all duration-100 hover:bg-gray-50"
+                                      className={`flex items-center gap-3 cursor-pointer select-none px-3 py-2 transition-all duration-100 hover:bg-gray-50 ${
+                                        isSelected ? "bg-[#B3D9FF]" : ""
+                                      }`}
                                     >
                                       <input
                                         type="checkbox"
@@ -3033,7 +3071,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                         value={currentAnswer}
                                         onChange={(e) => handleNoteCompletionChange(inputId, e.target.value)}
                                         placeholder={questionNum.toString()}
-                                        className={`inline-block w-[181px] h-[20px] px-2 py-0 text-sm 
+                                        className={`inline-block w-[181px] h-[20px] px-2 py-0 text-sm
            bg-white border-black
            focus:outline-none focus:ring-blue-400 text-center
            placeholder-gray-400 ${colorStyles.text} rounded-none`}
@@ -3118,10 +3156,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                               e.target.value,
                                             )
                                           }
-                                          className={`inline-block w-[140px] h-[20px] px-2 py-0 text-sm 
+                                          className={`inline-block w-[140px] h-[20px] px-2 py-0 text-sm
              bg-white border-black
-             focus:outline-none text-center
-             ${colorStyles.text} rounded-none`}
+             focus:border-blue-400 focus:ring-1 focus:ring-blue-400
+             ${colorStyles.text} rounded-none text-center`}
                                           placeholder={inputNum.toString()}
                                         />
                                       )
@@ -3161,9 +3199,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                                 e.target.value,
                                               )
                                             }
-                                            className={`inline-block w-[140px] h-[20px] px-2 py-0 text-sm 
+                                            className={`inline-block w-[140px] h-[20px] px-2 py-0 text-sm
              bg-white border-black
-             focus:outline-none 
+             focus:border-blue-400 focus:ring-1 focus:ring-blue-400
              ${colorStyles.text} rounded-none text-center`}
                                             placeholder={inputNum.toString()}
                                           />
@@ -3361,7 +3399,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                   setDraggedOption(null)
                                 }
                               }}
-                              className="flex items-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg min-h-[40px] cursor-pointer hover:bg-gray-100 transition-colors"
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg min-h-[40px] cursor-pointer transition-colors ${
+                                selectedChoice
+                                  ? "border-2 border-[#4B9FD5] bg-white"
+                                  : "border-2 border-dashed border-gray-400 bg-white hover:bg-gray-50"
+                              }`}
                             >
                               <span className="bg-white border-2 border-[#4B61D1] text-gray-900 w-6 h-6 rounded flex items-center justify-center text-xs font-bold flex-shrink-0">
                                 {questionNum}
@@ -3376,12 +3418,12 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                     handleSentenceEndingsRemove(questionId, optionKey)
                                   }}
                                   onDragEnd={() => setDraggedOption(null)}
-                                  className="flex-1 px-2 py-1 bg-blue-100 border border-blue-300 rounded text-black font-medium cursor-move hover:bg-blue-200 transition-colors text-sm"
+                                  className="flex-1 px-2 py-1 text-black font-medium cursor-move text-sm"
                                 >
                                   {question.choices?.[selectedChoice]}
                                 </div>
                               ) : (
-                                <div className="flex-1 text-gray-400 text-sm italic">Drag an answer here</div>
+                                <div className="flex-1 text-gray-400 text-sm italic"></div>
                               )}
                             </div>
                           </div>
@@ -3391,16 +3433,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                     {/* Choices section */}
                     <div className="mt-6 pt-4 border-t-2 border-gray-200">
-                      <div className="text-sm font-semibold mb-3 text-black">
-                        Choose the correct answer and move it into the gap.
-                      </div>
-
                       <div
-                        className="flex flex-wrap gap-3 p-4 border-2 border-gray-200 rounded-lg bg-white"
+                        className="space-y-3"
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
                           e.preventDefault()
-                          // Allow dropping back to choices area (removes from answer)
                         }}
                       >
                         {(() => {
@@ -3416,7 +3453,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               draggable
                               onDragStart={() => setDraggedOption({ key, text: text as string })}
                               onDragEnd={() => setDraggedOption(null)}
-                              className="px-4 py-2 border-2 border-gray-300 rounded-lg bg-white text-black font-medium hover:border-blue-500 hover:bg-blue-50 transition-colors cursor-move"
+                              className="block w-fit px-4 py-0 font-bold border border-gray-300 rounded-lg bg-white text-black hover:border-gray-500 transition-colors cursor-move"
                               style={{ fontSize: `${textSize}px` }}
                             >
                               {text}
@@ -3534,7 +3571,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   return (
     <div className={`flex flex-col h-screen ${colorStyles.bg}`}>
       {/* Header */}
-      <div className="border-b">
+      <div className="border-b bg-white z-50 sticky top-0">
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-4">
             <div className="text-2xl font-bold text-red-600">IELTS</div>
@@ -3692,7 +3729,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     getCurrentPartPassages.map((passage) => (
                       <div key={passage.id} className="mb-6">
                         {passage.type === "matching" ? (
-                          parseMatchingPassage(passage.reading_text, getMatchingQuestionId() || "")
+                          renderMatchingHeadingsPassage(passage, getMatchingQuestionId() || "")
                         ) : (
                           <div
                             className={`${colorStyles.text} leading-relaxed`}
@@ -3758,19 +3795,21 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                 const { questionGroup, question, questionId } = matchingDetails
 
-                const normalizedOptions = Array.isArray(question.options)
-                  ? question.options.map((option, index) => {
-                      if (typeof option === "string") {
-                        // Convert string array to object array with letter keys
-                        return {
-                          key: String.fromCharCode(65 + index), // A, B, C, D, etc.
-                          text: option,
+                const normalizedOptions = (() => {
+                  if (!question?.options) return []
+
+                  return Array.isArray(question.options)
+                    ? question.options.map((option, index) => {
+                        if (typeof option === "string") {
+                          return {
+                            key: String.fromCharCode(65 + index),
+                            text: option,
+                          }
                         }
-                      }
-                      // Already an object with key and text
-                      return option
-                    })
-                  : []
+                        return option
+                      })
+                    : []
+                })()
 
                 const answerCount = normalizedOptions.length
 
@@ -3800,11 +3839,24 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                     <h3 className={`text-lg font-bold ${colorStyles.text} mb-4`}>List of Headings</h3>
 
-                    <div className="space-y-3">
+                    <div
+                      className="space-y-3"
+                      onDragOver={(e) => {
+                        e.preventDefault()
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        // When dropping back to options area, just clear draggedOption
+                        // The option will automatically reappear in the list since it's been removed from matchingAnswers
+                        setDraggedOption(null)
+                      }}
+                    >
                       {normalizedOptions
                         .filter((option) => {
-                          const isPlaced = Object.values(matchingAnswers[questionId] || {}).includes(option.key)
-                          return !isPlaced
+                          const placedKeys = Object.values(matchingAnswers[questionId] || {}).map((answer: any) =>
+                            typeof answer === "object" ? answer.key : answer,
+                          )
+                          return !placedKeys.includes(option.key)
                         })
                         .map((option) => {
                           return (
@@ -3815,9 +3867,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                 setDraggedOption({ key: option.key, text: option.text })
                               }}
                               onDragEnd={() => setDraggedOption(null)}
-                              className={`flex items-start gap-3 p-4 border-2 rounded-lg transition-all cursor-move hover:border-blue-400 hover:shadow-md border-blue-300 ${colorStyles.border} ${colorStyles.cardBg}`}
+                              className="block w-fit px-2 py-1 border border-black rounded font-bold transition-colors cursor-move hover:border-gray-400 bg-white text-black"
+                              style={{ fontSize: `${textSize}px` }}
                             >
-                              <span className={`text-base leading-relaxed ${colorStyles.text}`}>{option.text}</span>
+                              {option.text}
                             </div>
                           )
                         })}
@@ -3852,9 +3905,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       )}
 
       {/* Bottom Navigation */}
-      <div
-        className={`fixed bottom-0 left-0 right-0 ${colorStyles.headerBg} border-t ${colorStyles.border} px-6 py-4 z-50`}
-      >
+      <div className={`fixed bottom-0 left-0 right-0 bg-white border-t ${colorStyles.border} px-6 py-4 z-50`}>
         {/* Mobile Menu */}
         {isMobileMenuOpen && (
           <div className={`md:hidden ${colorStyles.bg} border-b ${colorStyles.border} p-4`}>
