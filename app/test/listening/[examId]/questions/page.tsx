@@ -2064,8 +2064,8 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 key={option.key}
                                 htmlFor={`q${question.id}-${option.key}`}
                                 onClick={() => handleAnswerChange(questionId, option.key)}
-                                className={`flex items-center gap-2 cursor-pointer select-none px-[2px] py-[1px] rounded-md transition-all duration-100 ${
-                                  isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                                className={`flex items-center gap-2 cursor-pointer select-none px-3 py-2 transition-all duration-100 ${
+                                  isSelected ? "bg-[#B3D9FF]" : "hover:bg-gray-50"
                                 }`}
                               >
                                 <input
@@ -2076,7 +2076,7 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                   checked={isSelected}
                                   onChange={() => handleAnswerChange(questionId, option.key)}
                                   className="peer relative w-[16px] h-[16px] rounded-full border border-black appearance-none cursor-pointer bg-white transition-all duration-150
-                                  checked:before:content-[''] checked:before:absolute checked:before:top-[3px] checked:before:left-[3px]
+                                  checked:before:content-[''] checked:before:before:absolute checked:before:top-[3px] checked:before:left-[3px]
                                   checked:before:w-[8px] checked:before:h-[8px] checked:before:bg-[#4B61D1] checked:before:rounded-full"
                                 />
 
@@ -2134,8 +2134,8 @@ export default function ListeningTestPage({ params }: { params: Promise<{ examId
                                 }
                                 handleAnswerChange(questionId, newAnswers)
                               }}
-                              className={`flex items-center gap-3 cursor-pointer select-none px-[3px] py-[1px] rounded-md transition-all duration-100 ${
-                                isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                              className={`flex items-center gap-3 cursor-pointer select-none px-3 py-2 transition-all duration-100 ${
+                                isSelected ? "bg-[#B3D9FF]" : "hover:bg-gray-50"
                               } ${!canSelect ? "opacity-50 cursor-not-allowed" : ""}`}
                             >
                               <input
