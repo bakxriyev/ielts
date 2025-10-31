@@ -121,7 +121,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
   const [questionNumbers, setQuestionNumbers] = useState<Record<string, number>>({})
   const { showAlert, AlertComponent, setAlert } = useCustomAlert()
 
-  const [colorMode, setColorMode] = useState<"default" | "night" | "yellow">("default")
+  const [colorMode, setColorMode] = useState<"default" | "night" | "yellow" | "blue">("default")
   const [textSize, setTextSize] = useState(16)
   const [isOnline, setIsOnline] = useState(true)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
@@ -196,8 +196,14 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     const savedColorMode = localStorage.getItem(`colorMode_${examId}`)
     const savedTextSize = localStorage.getItem(`textSize_${examId}`)
 
-    if (savedColorMode && (savedColorMode === "default" || savedColorMode === "night" || savedColorMode === "yellow")) {
-      setColorMode(savedColorMode as "default" | "night" | "yellow")
+    if (
+      savedColorMode &&
+      (savedColorMode === "default" ||
+        savedColorMode === "night" ||
+        savedColorMode === "yellow" ||
+        savedColorMode === "blue")
+    ) {
+      setColorMode(savedColorMode as "default" | "night" | "yellow" | "blue")
     }
     if (savedTextSize) {
       setTextSize(Number.parseInt(savedTextSize))
@@ -223,13 +229,23 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         }
       case "yellow":
         return {
-          bg: "bg-black",
-          text: "text-yellow-400",
-          border: "border-yellow-600",
-          cardBg: "bg-gray-900",
-          inputBg: "bg-gray-800",
-          inputText: "text-yellow-400",
-          headerBg: "bg-gray-900",
+          bg: "bg-yellow-50",
+          text: "text-gray-900",
+          border: "border-yellow-200",
+          cardBg: "bg-yellow-100",
+          inputBg: "bg-yellow-50",
+          inputText: "text-gray-900",
+          headerBg: "bg-yellow-100",
+        }
+      case "blue":
+        return {
+          bg: "bg-blue-50",
+          text: "text-gray-900",
+          border: "border-blue-200",
+          cardBg: "bg-blue-100",
+          inputBg: "bg-blue-50",
+          inputText: "text-gray-900",
+          headerBg: "bg-blue-100",
         }
       default:
         return {
@@ -239,7 +255,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           cardBg: "bg-white",
           inputBg: "bg-white",
           inputText: "text-gray-900",
-          headerBg: "bg-white",
+          headerBg: "bg-[#f5f1e8]",
         }
     }
   }
@@ -2012,7 +2028,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     </button>
                   </div>
                 ) : (
-                  <span className="text-gray-400 text-sm">Drop heading here</span>
+                  <span className="text-gray-400 text-sm"></span>
                 )}
               </div>
             )}
@@ -2081,12 +2097,11 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               {summaryDragQuestions.map((question) => {
                 const questionId = `${questionGroup.id}_${question.id}`
                 const startNum = getQuestionNumber(questionId)
-                const blanks = question.q_text?.match(/____+/g) || [] // Use q_text for blanks
+                const blanks = question.options?.match(/____+/g) || []
                 const endNum = startNum + blanks.length - 1
                 const questionRange = blanks.length > 1 ? `${startNum}–${endNum}` : startNum
 
-                // Parse options text to get parts and blanks
-                const parts = question.q_text?.split(/____+/) || [] // Use q_text for splitting
+                const parts = question.options?.split(/____+/) || []
                 const choices = question.choices || {}
 
                 // Get current answers for this question
@@ -2105,8 +2120,30 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     },
                   }))
 
-                  // Update answers for submission
-                  handleAnswerChange(`${questionId}_blank_${blankIndex + 1}`, choiceKey)
+                  // Save to localStorage with correct format
+                  const answersKey = `answers_${examId}_reading_${getUserId()}`
+                  const existingAnswers = JSON.parse(localStorage.getItem(answersKey) || "[]")
+
+                  // Find if this blank already has an answer
+                  const existingIndex = existingAnswers.findIndex(
+                    (a: any) => a.questionId === question.id && a.blankNumber === blankIndex + 1,
+                  )
+
+                  const answerData = {
+                    userId: getUserId(),
+                    questionId: question.id,
+                    r_questionsID: question.id,
+                    answer: choiceKey,
+                    blankNumber: blankIndex + 1,
+                  }
+
+                  if (existingIndex >= 0) {
+                    existingAnswers[existingIndex] = answerData
+                  } else {
+                    existingAnswers.push(answerData)
+                  }
+
+                  localStorage.setItem(answersKey, JSON.stringify(existingAnswers))
                 }
 
                 const handleRemove = (blankIndex: number) => {
@@ -2119,8 +2156,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     }
                   })
 
-                  // Update answers for submission
-                  handleAnswerChange(`${questionId}_blank_${blankIndex + 1}`, "")
+                  // Remove from localStorage
+                  const answersKey = `answers_${examId}_reading_${getUserId()}`
+                  const existingAnswers = JSON.parse(localStorage.getItem(answersKey) || "[]")
+                  const filteredAnswers = existingAnswers.filter(
+                    (a: any) => !(a.questionId === question.id && a.blankNumber === blankIndex + 1),
+                  )
+                  localStorage.setItem(answersKey, JSON.stringify(filteredAnswers))
                 }
 
                 return (
@@ -2128,7 +2170,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     key={question.id}
                     className={`mb-8 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}
                   >
-                    <div className="text-2xl font-bold mb-2 text-black">Questions {questionRange}</div>
+                    <div className="text-lg font-bold mb-2 text-black">Questions {questionRange}</div>
 
                     {questionGroup.instruction && (
                       <div
@@ -2139,62 +2181,59 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                     {question.q_text && question.q_text.trim() && (
                       <div
-                        className="mb-8 text-lg font-bold text-black"
+                        className="mb-6 text-lg font-bold text-black"
                         dangerouslySetInnerHTML={{ __html: question.q_text }}
                       />
                     )}
 
                     <div
-                      className={`leading-relaxed mb-8 p-4 rounded-lg ${colorStyles.inputBg} ${colorStyles.border}`}
+                      className={`leading-relaxed mb-8 p-4 rounded-lg border ${colorStyles.border}`}
                       style={{ fontSize: `${textSize}px` }}
                     >
                       {parts.map((part, index) => (
                         <React.Fragment key={index}>
                           <span className="text-black" dangerouslySetInnerHTML={{ __html: part }} />
                           {index < parts.length - 1 && (
-                            <span
-                              onDragOver={(e) => {
-                                e.preventDefault()
-                                e.currentTarget.classList.add("border-blue-500", "bg-blue-100")
-                              }}
-                              onDragLeave={(e) => {
-                                e.currentTarget.classList.remove("border-blue-500", "bg-blue-100")
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault()
-                                e.currentTarget.classList.remove("border-blue-500", "bg-blue-100")
-                                if (draggedOption) {
-                                  handleDrop(index, draggedOption.key)
-                                  setDraggedOption(null)
-                                }
-                              }}
-                              className="inline-flex items-center gap-2 mx-1 px-3 py-2 border-2 border-dashed border-gray-300 bg-gray-100 rounded cursor-pointer hover:bg-gray-200 transition-colors align-middle"
-                            >
-                              <span className="bg-white text-blue-600 px-2 py-0.5 rounded text-sm font-bold border border-blue-600">
-                                {startNum + index}
+                            <span className="inline-flex items-center gap-1 mx-1 align-middle">
+                              <span
+                                onDragOver={(e) => {
+                                  e.preventDefault()
+                                  e.currentTarget.classList.add("border-blue-500", "bg-blue-50")
+                                }}
+                                onDragLeave={(e) => {
+                                  e.currentTarget.classList.remove("border-blue-500", "bg-blue-50")
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault()
+                                  e.currentTarget.classList.remove("border-blue-500", "bg-blue-50")
+                                  if (draggedOption) {
+                                    handleDrop(index, draggedOption.key)
+                                    setDraggedOption(null)
+                                  }
+                                }}
+                                className="inline-flex items-center gap-2 px-3 py-1 h-[25px] border-2 border-dashed border-gray-400 bg-white rounded cursor-pointer hover:border-gray-500 transition-colors min-w-[140px] justify-center"
+                              >
+                                {/* Question number inside drop zone */}
+                                <span className="text-black text-base font-bold shrink-0">{startNum + index}</span>
+                                {/* Dropped answer or empty space */}
+                                {currentAnswers[index + 1] ? (
+                                  <span
+                                    draggable
+                                    onDragStart={() => {
+                                      const choiceKey = currentAnswers[index + 1]
+                                      const choiceText = choices[choiceKey]
+                                      setDraggedOption({ key: choiceKey, text: choiceText })
+                                      handleRemove(index)
+                                    }}
+                                    onDragEnd={() => setDraggedOption(null)}
+                                    className="cursor-move text-black font-medium"
+                                  >
+                                    {choices[currentAnswers[index + 1]]}
+                                  </span>
+                                ) : (
+                                  <span className="w-16"></span>
+                                )}
                               </span>
-                              {currentAnswers[index + 1] ? (
-                                <span
-                                  draggable
-                                  onDragStart={() => {
-                                    const choiceKey = currentAnswers[index + 1]
-                                    const choiceText = choices[choiceKey]
-                                    setDraggedOption({ key: choiceKey, text: choiceText })
-                                    handleRemove(index)
-                                  }}
-                                  onDragEnd={() => setDraggedOption(null)}
-                                  className="cursor-move px-2 py-1 bg-blue-100 rounded text-black"
-                                >
-                                  {choices[currentAnswers[index + 1]]}
-                                </span>
-                              ) : (
-                                <input
-                                  type="text"
-                                  placeholder="____"
-                                  readOnly
-                                  className="w-16 px-2 py-1 border border-gray-400 rounded text-center text-black bg-white"
-                                />
-                              )}
                             </span>
                           )}
                         </React.Fragment>
@@ -2202,9 +2241,6 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     </div>
 
                     <div>
-                      <div className="text-sm font-semibold mb-3 text-black">
-                        Choose the correct answer and move it into the gap.
-                      </div>
                       <div className="flex flex-wrap gap-2">
                         {availableChoices.map(([key, text]) => (
                           <div
@@ -2214,7 +2250,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               setDraggedOption({ key, text: text as string })
                             }}
                             onDragEnd={() => setDraggedOption(null)}
-                            className="px-4 py-2 border-2 border-gray-300 rounded-lg cursor-move hover:border-blue-500 hover:bg-blue-50 transition-colors bg-white text-black font-medium"
+                            className="px-3 py-1.5 border border-gray-400 rounded cursor-move hover:border-gray-600 hover:bg-gray-50 transition-colors bg-white text-black"
                             style={{ fontSize: `${textSize}px` }}
                           >
                             {text}
@@ -2226,6 +2262,263 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 )
               })}
             </>
+          )
+        })()}
+      </>
+    )
+  }
+
+  const renderPartSection = () => {
+    if (!currentPart) return null
+
+    return (
+      <div className="mb-6 p-4 rounded-lg border border-gray-300 bg-white">
+        <div className="font-bold text-lg text-black mb-1">Part {currentPart}</div>
+        {currentPart.instruction && (
+          <div
+            className="text-base text-black leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: currentPart.instruction }}
+          />
+        )}
+      </div>
+    )
+  }
+
+  const renderNoteCompletion = (questionGroup: any) => {
+    return (
+      <>
+        {(() => {
+          const noteCompletionQuestions = questionGroup.r_questions?.filter((q) => q.q_type === "NOTE_COMPLETION") || []
+          if (noteCompletionQuestions.length === 0) return null
+
+          return (
+            <>
+              {noteCompletionQuestions.map((question) => {
+                const questionId = `${questionGroup.id}_${question.id}`
+                const startNum = getQuestionNumber(questionId)
+                const blanks = question.options?.match(/____+/g) || []
+                const endNum = startNum + blanks.length - 1
+                const questionRange = blanks.length > 1 ? `${startNum}–${endNum}` : startNum
+
+                const parts = question.options?.split(/____+/) || []
+
+                return (
+                  <div
+                    key={question.id}
+                    className={`mb-8 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}
+                  >
+                    <div className="text-lg font-bold mb-2 text-black">Questions {questionRange}</div>
+
+                    {questionGroup.instruction && (
+                      <div
+                        className={`text-base leading-relaxed mb-4 ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                      />
+                    )}
+
+                    {question.q_text && question.q_text.trim() && (
+                      <div
+                        className="mb-6 text-lg font-bold text-black"
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
+
+                    <div className="leading-relaxed" style={{ fontSize: `${textSize}px` }}>
+                      {parts.map((part, index) => (
+                        <React.Fragment key={index}>
+                          <span className="text-black" dangerouslySetInnerHTML={{ __html: part }} />
+                          {index < parts.length - 1 && (
+                            <span className="inline-flex items-center gap-1 mx-1 align-middle">
+                              <span className="text-black font-bold">{startNum + index}</span>
+                              <input
+                                type="text"
+                                value={answers[`${questionId}_blank_${index + 1}`] || ""}
+                                onChange={(e) => handleAnswerChange(`${questionId}_blank_${index + 1}`, e.target.value)}
+                                className="w-[181px] h-[17px] px-2 py-0 border border-black text-black bg-white text-sm leading-[20px]"
+                                style={{ fontSize: `${textSize}px` }}
+                              />
+                            </span>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )
+        })()}
+      </>
+    )
+  }
+
+  const renderTableCompletion = (questionGroup: any) => {
+    return (
+      <>
+        {(() => {
+          const tableCompletionQuestions =
+            questionGroup.r_questions?.filter((q) => q.q_type === "TABLE_COMPLETION") || []
+          if (tableCompletionQuestions.length === 0) return null
+
+          return (
+            <>
+              {tableCompletionQuestions.map((question) => {
+                const questionId = `${questionGroup.id}_${question.id}`
+                const startNum = getQuestionNumber(questionId)
+
+                const columns = question.columns || []
+                const rows = question.rows || []
+
+                let blankCounter = 0
+                const blanksInRows = rows.map((row) => {
+                  return row.map((cell) => {
+                    if (cell === "____") {
+                      blankCounter++
+                      return blankCounter
+                    }
+                    return null
+                  })
+                })
+
+                const endNum = startNum + blankCounter - 1
+                const questionRange = blankCounter > 1 ? `${startNum}–${endNum}` : startNum
+
+                return (
+                  <div
+                    key={question.id}
+                    className={`mb-8 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}
+                  >
+                    <div className="text-lg font-bold mb-2 text-black">Questions {questionRange}</div>
+
+                    {questionGroup.instruction && (
+                      <div
+                        className={`text-base leading-relaxed mb-4 ${colorStyles.text}`}
+                        dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                      />
+                    )}
+
+                    {question.q_text && question.q_text.trim() && (
+                      <div
+                        className="mb-6 text-lg font-bold text-black"
+                        dangerouslySetInnerHTML={{ __html: question.q_text }}
+                      />
+                    )}
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse border border-gray-300">
+                        <thead>
+                          <tr>
+                            {columns.map((col, colIndex) => (
+                              <th
+                                key={colIndex}
+                                className="border border-gray-300 px-4 py-2 text-left bg-white text-black"
+                                style={{ fontSize: `${textSize}px` }}
+                              >
+                                {col}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((row, rowIndex) => (
+                            <tr key={rowIndex}>
+                              {row.map((cell, cellIndex) => {
+                                const blankNum = blanksInRows[rowIndex][cellIndex]
+                                const isBlank = cell === "____"
+
+                                return (
+                                  <td
+                                    key={cellIndex}
+                                    className="border border-gray-300 px-4 py-2 bg-white"
+                                    style={{ fontSize: `${textSize}px` }}
+                                  >
+                                    {isBlank ? (
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-black font-bold">{startNum + blankNum - 1}</span>
+                                        <input
+                                          type="text"
+                                          value={answers[`${questionId}_blank_${blankNum}`] || ""}
+                                          onChange={(e) =>
+                                            handleAnswerChange(`${questionId}_blank_${blankNum}`, e.target.value)
+                                          }
+                                          className="flex-1 min-w-[181px] h-[18px] px-2 py-0 border border-gray-400 rounded text-black bg-white text-sm leading-[17px]"
+                                          style={{ fontSize: `${textSize}px` }}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <span className="text-black">{cell}</span>
+                                    )}
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )
+        })()}
+      </>
+    )
+  }
+
+  const renderShortAnswer = (questionGroup: any) => {
+    return (
+      <>
+        {(() => {
+          const shortAnswerQuestions = questionGroup.r_questions?.filter((q) => q.q_type === "SHORT_ANSWER") || []
+          if (shortAnswerQuestions.length === 0) return null
+
+          const startNum = getQuestionNumber(`${questionGroup.id}_${shortAnswerQuestions[0].id}`)
+          const endNum = startNum + shortAnswerQuestions.length - 1
+          const questionRange = shortAnswerQuestions.length > 1 ? `${startNum}–${endNum}` : startNum
+
+          return (
+            <div className={`mb-8 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}>
+              <div className="text-lg font-bold mb-2 text-black">Questions {questionRange}</div>
+
+              {questionGroup.instruction && (
+                <div
+                  className={`text-base leading-relaxed mb-4 ${colorStyles.text}`}
+                  dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
+                />
+              )}
+
+              <div className="space-y-4">
+                {shortAnswerQuestions.map((question, index) => {
+                  const questionId = `${questionGroup.id}_${question.id}`
+                  const questionNum = startNum + index
+
+                  return (
+                    <div key={question.id} className="flex items-start gap-3">
+                      <span className="text-black font-bold mt-1" style={{ fontSize: `${textSize}px` }}>
+                        {questionNum}
+                      </span>
+                      <div className="flex-1">
+                        {question.q_text && (
+                          <div
+                            className="mb-2 text-black"
+                            style={{ fontSize: `${textSize}px` }}
+                            dangerouslySetInnerHTML={{ __html: question.q_text }}
+                          />
+                        )}
+                        <input
+                          type="text"
+                          value={answers[questionId] || ""}
+                          onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                          className="w-full h-[17px] px-2 py-0 border border-gray-400 rounded text-black bg-white text-sm leading-[17px]"
+                          style={{ fontSize: `${textSize}px` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           )
         })()}
       </>
@@ -2406,7 +2699,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 )}
                 {questionGroup.instruction && (
                   <div>
-                    <div className={`text-2xl font-bold mb-3 ${colorStyles.text}`}>
+                    <div className={`text-xl font-bold mb-2 ${colorStyles.text}`}>
                       Questions {(() => {
                         const range = getQuestionGroupRange(questionGroup)
                         return range.start === range.end ? range.start : `${range.start}–${range.end}`
@@ -2544,7 +2837,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               value={value}
                               checked={isSelected}
                               onChange={() => handleAnswerChange(questionId, value)}
-                              className="peer relative w-[16px] h-[16px] rounded-full border border-black appearance-none cursor-pointer bg-white transition-all duration-150
+                              className="peer relative w-[16px] h-[16px] border border-black appearance-none cursor-pointer bg-white transition-all duration-150
                 checked:before:content-[''] checked:before:absolute checked:before:top-[3px] checked:before:left-[3px]
                 checked:before:w-[8px] checked:before:h-[8px] checked:before:bg-[#4B61D1] checked:before:rounded-full"
                             />
@@ -2692,8 +2985,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   </div>
                 )}
                 {question.q_type === "NOTE_COMPLETION" && question.options && (
-                  <div className="space-y-1">
-                    <div className={`rounded-lg p-3 leading-[2.4] ${colorStyles.cardBg}`}>
+                  <div className="space-y-0">
+                    <div className={`rounded-lg p-2 leading-[1.8] ${colorStyles.cardBg}`}>
                       {(() => {
                         const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
 
@@ -2705,13 +2998,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                         let currentInputIndex = 0
 
                         return parts.map((part, index) => {
-                          // Agar <h1> bo‘lsa, markazda chiqaramiz
+                          // Agar <h1> bo'lsa, markazda chiqaramiz
                           if (/<h1>.*?<\/h1>/.test(part)) {
                             const headingText = part.replace(/<\/?h1>/g, "").trim()
                             return (
                               <div
                                 key={`heading_${index}`}
-                                className={`text-center my-6 font-bold text-[22px] ${colorStyles.text}`}
+                                className={`text-center my-3 font-bold text-[18px] ${colorStyles.text}`}
                               >
                                 {headingText}
                               </div>
@@ -2722,7 +3015,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           const textParts = part.split(/(____+)/)
 
                           return (
-                            <div key={`textblock_${index}`} className="my-3">
+                            <div key={`textblock_${index}`} className="my-1">
                               {textParts.map((subPart, subIndex) => {
                                 if (subPart.match(/____+/)) {
                                   const questionNum = questionStartNum + currentInputIndex
@@ -2740,10 +3033,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                         value={currentAnswer}
                                         onChange={(e) => handleNoteCompletionChange(inputId, e.target.value)}
                                         placeholder={questionNum.toString()}
-                                        className={`inline-block w-[150px] px-3 py-[3px] text-center text-sm
-                                   bg-white border-2 border-black rounded-[4px]
-                                   focus:outline-none focus:ring-[1px] focus:ring-[#4B61D1] focus:border-[#4B61D1]
-                                   placeholder-gray-400 transition-all duration-150 ${colorStyles.text}`}
+                                        className={`inline-block w-[181px] h-[20px] px-2 py-0 text-sm 
+           bg-white border-black
+           focus:outline-none focus:ring-blue-400 text-center
+           placeholder-gray-400 ${colorStyles.text} rounded-none`}
                                       />
                                     </span>
                                   )
@@ -2768,13 +3061,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                 {question.q_type === "TABLE_COMPLETION" && question.columns && question.rows && (
                   <div className="overflow-x-auto">
-                    <table className="w-full border-collapse border-2 border-black">
+                    <table className="w-full border-collapse border border-gray-400">
                       <thead>
-                        <tr className="bg-gray-100">
+                        <tr className="bg-white">
                           {question.columns.map((col: string, colIndex: number) => (
                             <th
                               key={colIndex}
-                              className="border-2 border-black p-3 text-left font-bold text-gray-900"
+                              className="border border-gray-400 p-2 text-left font-normal text-gray-900"
                               dangerouslySetInnerHTML={{ __html: col }}
                             />
                           ))}
@@ -2803,7 +3096,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           return (
                             <tr key={rowIndex}>
                               {/* Row label (first column) */}
-                              <td className="border-2 border-black p-2 bg-gray-50">
+                              <td className="border border-gray-400 p-2 bg-white">
                                 <div className="flex flex-wrap items-center gap-1">
                                   {row.label?.split(/(____+)/).map((part: string, partIndex: number) => {
                                     if (/____+/.test(part)) {
@@ -2825,7 +3118,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                               e.target.value,
                                             )
                                           }
-                                          className="inline-block w-24 text-sm bg-white border-2 border-black focus:border-black text-center"
+                                          className={`inline-block w-[140px] h-[20px] px-2 py-0 text-sm 
+             bg-white border-black
+             focus:outline-none text-center
+             ${colorStyles.text} rounded-none`}
                                           placeholder={inputNum.toString()}
                                         />
                                       )
@@ -2833,7 +3129,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                     return part ? (
                                       <span
                                         key={partIndex}
-                                        className="text-gray-900 font-medium"
+                                        className="text-gray-900"
                                         dangerouslySetInnerHTML={{ __html: part }}
                                       />
                                     ) : null
@@ -2843,7 +3139,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                               {/* Data cells */}
                               {row.cells?.map((cell: string, cellIndex: number) => (
-                                <td key={cellIndex} className="border-2 border-black p-2">
+                                <td key={cellIndex} className="border border-gray-400 p-2 bg-white">
                                   <div className="flex flex-wrap items-center gap-1">
                                     {cell?.split(/(____+)/).map((part: string, partIndex: number) => {
                                       if (/____+/.test(part)) {
@@ -2865,7 +3161,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                                 e.target.value,
                                               )
                                             }
-                                            className="inline-block w-24 text-sm bg-white border-2 border-black focus:border-black text-center"
+                                            className={`inline-block w-[140px] h-[20px] px-2 py-0 text-sm 
+             bg-white border-black
+             focus:outline-none 
+             ${colorStyles.text} rounded-none text-center`}
                                             placeholder={inputNum.toString()}
                                           />
                                         )
@@ -2873,7 +3172,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                       return part ? (
                                         <span
                                           key={partIndex}
-                                          className="text-gray-900 font-medium"
+                                          className="text-gray-900"
                                           dangerouslySetInnerHTML={{ __html: part }}
                                         />
                                       ) : null
@@ -2900,7 +3199,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                         <thead>
                           <tr className="bg-gray-100 border-b-2 border-black">
                             <th
-                              className="p-2 text-left font-bold text-black border-r-2 border-black"
+                              className="p-2 text-left font-bold text-xl text-black border-r-2 border-black"
                               style={{ fontSize: `${textSize}px` }}
                             >
                               Questions {(() => {
@@ -3006,7 +3305,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 {question.q_type === "SENTENCE_ENDINGS" && question.options && question.choices && (
                   <div className="space-y-4">
                     {/* Questions header */}
-                    <div className="text-2xl font-bold mb-2 text-black">
+                    <div className="text-xl font-bold mb-2 text-black">
                       Questions {(() => {
                         const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
                         const optionsCount = Object.keys(question.options).length
@@ -3192,13 +3491,13 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
               if (index < parts.length - 1) {
                 elements.push(
                   <span key={`input-${index}`} className="inline-flex items-center mx-[4px]">
-                    <span className="bg-gray-700 text-white px-1.5 py-0.5 rounded text-xs font-medium mr-1">
+                    <span className="bg-gray-600 text-white px-1 py-0.5 rounded text-[10px] font-normal mr-1">
                       {questionNum}
                     </span>
                     <Input
                       value={answers[questionId] || ""}
                       onChange={(e) => handleAnswerChange(questionId, e.target.value)}
-                      className={`inline-block w-48 mx-1 px-2 py-1 text-base ${colorStyles.inputBg} ${colorStyles.border} focus:border-gray-500`}
+                      className={`inline-block w-40 mx-1 px-2 py-1 text-sm bg-white border border-gray-400 rounded-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-400 ${colorStyles.text}`}
                       style={{ fontSize: `${textSize}px` }}
                       placeholder="..."
                     />
@@ -3349,6 +3648,18 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 >
                   Yellow Mode
                 </Button>
+                <Button
+                  variant={colorMode === "blue" ? "default" : "outline"}
+                  className={`w-full ${
+                    colorMode === "blue"
+                      ? "bg-blue-600 text-white hover:bg-blue-500"
+                      : `${colorStyles.inputBg} ${colorStyles.border} ${colorStyles.text}`
+                  }`}
+                  style={{ fontSize: `${textSize}px` }}
+                  onClick={() => setColorMode("blue")}
+                >
+                  Blue Mode
+                </Button>
               </div>
             </div>
           </div>
@@ -3357,9 +3668,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
       <div className="flex-1 flex overflow-hidden" ref={mainContentContainerRef}>
         <div className="absolute top-[60px] left-0 right-0 z-10">
-          <div className={`${colorStyles.cardBg} border-b-2 ${colorStyles.border} px-6 py-4`}>
-            <h2 className={`text-xl font-bold ${colorStyles.text} mb-1`}>Part {currentPart}</h2>
-            <p className={`text-base ${colorStyles.text}`}>
+          <div className="bg-[#f5f1e8] border border-gray-300 rounded-lg mx-6 mt-4 px-6 py-4">
+            <h2 className="text-xl font-bold text-black mb-1">Part {currentPart}</h2>
+            <p className="text-base text-black">
               Read the text and answer questions {(() => {
                 const range = getPartQuestionRange(currentPart)
                 return range.start === range.end ? range.start : `${range.start}–${range.end}`
@@ -3414,9 +3725,28 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
         {/* Resizable Divider */}
         <div
-          className={`w-1.5 ${colorStyles.border} cursor-col-resize hover:bg-blue-500 active:bg-blue-600 transition-colors ${isResizing ? "bg-blue-600" : "bg-gray-300"}`}
+          className={`w-1 bg-gray-300 cursor-col-resize hover:bg-gray-400 active:bg-gray-500 transition-colors relative ${isResizing ? "bg-gray-500" : ""}`}
           onMouseDown={handleMouseDown}
-        />
+        >
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-12 bg-white border border-gray-400 rounded flex items-center justify-center shadow-sm">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-gray-600">
+              <path
+                d="M6 4L10 8L6 12"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M10 4L6 8L10 12"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
 
         {/* Questions Panel - Independent Scroll */}
         <div className={`flex-1 flex flex-col overflow-hidden ${colorStyles.bg}`}>
@@ -3445,8 +3775,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 const answerCount = normalizedOptions.length
 
                 return (
-                  <div className={`mb-8 p-6 border rounded-lg ${colorStyles.cardBg} ${colorStyles.border}`}>
-                    <div className={`text-2xl font-bold ${colorStyles.text}`}>
+                  <div className={`mb-8 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}>
+                    <div className="text-xl font-bold text-black mb-2">
                       Questions {(() => {
                         const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
                         const endNum = questionStartNum + answerCount - 1
@@ -3709,7 +4039,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
         <div className="flex items-center justify-center gap-8">
           {/* Parts Navigation */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-12">
             {getAvailableParts().map((partNum) => {
               const range = getPartQuestionRange(partNum)
               const totalQuestions = getPartQuestionCount(partNum)
