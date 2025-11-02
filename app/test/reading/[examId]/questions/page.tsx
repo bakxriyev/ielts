@@ -1148,11 +1148,23 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     rQuestionId: string,
     rowIndex: number,
     cellIndex: number,
-    inputIndex: number,
+    blankIndex: number,
     value: string,
   ) => {
+    console.log("[v0] TABLE INPUT CHANGE:", {
+      questionGroupId,
+      rQuestionId,
+      rowIndex,
+      cellIndex,
+      blankIndex,
+      value,
+    })
+
     const currentUserId = getUserId()
-    if (!currentUserId) return
+
+    if (!currentUserId) {
+      return
+    }
 
     const examIdToUse = backendExamId || examId
     const answersKey = `answers_${examIdToUse}_reading_${currentUserId}`
@@ -1171,7 +1183,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
       answersArray = []
     }
 
-    const answerKey = `${rowIndex}_${cellIndex}_${inputIndex}`
+    const answerKey = `${rowIndex + 1}_${cellIndex}_${blankIndex}`
+
+    console.log("[v0] Generated answer key:", answerKey)
+    console.log("[v0] Full state key:", `${questionGroupId}_${rQuestionId}_table_${answerKey}`)
 
     // Find existing entry for THIS SPECIFIC cell input
     const existingAnswerIndex = answersArray.findIndex(
@@ -1184,17 +1199,32 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         item.answer[answerKey] !== undefined,
     )
 
+    const stateKey = `${questionGroupId}_${rQuestionId}_table_${answerKey}`
+
     if (value.trim() === "") {
       // Remove the entry if value is empty
       if (existingAnswerIndex !== -1) {
-        answersArray.splice(existingAnswerIndex, 1)
+        // If the removed answer was the only one for this question, remove the whole question entry
+        if (Object.keys(answersArray[existingAnswerIndex].answer).length === 1) {
+          answersArray.splice(existingAnswerIndex, 1)
+        } else {
+          delete answersArray[existingAnswerIndex].answer[answerKey]
+        }
       }
+
+      // Remove from local state
+      setAnswers((prev) => {
+        const newAnswers = { ...prev }
+        delete newAnswers[stateKey]
+        return newAnswers
+      })
     } else {
+      // Add or update the answer
       if (existingAnswerIndex !== -1) {
-        // Update existing entry
-        answersArray[existingAnswerIndex].answer = { [answerKey]: value }
+        // Update existing answer object
+        answersArray[existingAnswerIndex].answer[answerKey] = value
       } else {
-        // Create new entry with only this one answer
+        // Add new entry
         answersArray.push({
           userId: currentUserId,
           questionId: Number.parseInt(questionGroupId),
@@ -1204,15 +1234,16 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           answer: { [answerKey]: value },
         })
       }
+
+      // Update local state
+      setAnswers((prev) => ({
+        ...prev,
+        [stateKey]: value,
+      }))
     }
 
+    // Save to localStorage
     localStorage.setItem(answersKey, JSON.stringify(answersArray))
-
-    // Update local state
-    setAnswers((prev) => ({
-      ...prev,
-      [`${questionGroupId}_${rQuestionId}_table_${answerKey}`]: value,
-    }))
   }
 
   const handleNoteCompletionChange = (inputId: string, value: string) => {
@@ -1658,9 +1689,12 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     return testData.questions
       .filter((q) => q.part === part)
       .sort((a, b) => {
-        const aOrder = a.order ?? a.id
-        const bOrder = b.order ?? b.id
-        return Number(aOrder) - Number(bOrder)
+        // Get the starting question number for each group
+        const aQuestionId = `${a.id}_${a.r_questions?.[0]?.id || 0}`
+        const bQuestionId = `${b.id}_${b.r_questions?.[0]?.id || 0}`
+        const aNum = questionNumbers[aQuestionId] || a.order || a.id
+        const bNum = questionNumbers[bQuestionId] || b.order || b.id
+        return Number(aNum) - Number(bNum)
       })
   }
 
@@ -1683,110 +1717,103 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
     }
   }
 
-  const getAnsweredCountForPart = (partNumber: number): number => {
-    const partQuestions = getQuestionsForPart(partNumber)
-    let count = 0
+  const getAnsweredCountForPart = (partNumber: number): { answered: number; total: number } => {
+    const questions = getQuestionsForPart(partNumber)
+    let totalQuestions = 0
+    let answeredQuestions = 0
 
-    partQuestions.forEach((questionGroup) => {
+    questions.forEach((questionGroup) => {
       questionGroup.r_questions?.forEach((question) => {
         const questionId = `${questionGroup.id}_${question.id}`
 
         if (question.q_type === "TABLE_COMPLETION") {
-          // Handle new TABLE_COMPLETION structure
-          if (question.rows && Array.isArray(question.rows)) {
-            question.rows.forEach((row, rowIndex) => {
-              // Check label inputs
-              if (row.label) {
-                const labelParts = row.label.split(/(____+)/)
-                labelParts.forEach((part, partIndex) => {
-                  if (/____+/.test(part)) {
-                    const answerKey = `${questionGroup.id}_${question.id}_table_${rowIndex}_0_${partIndex}`
-                    if (answers[answerKey]) {
-                      count++
-                    }
-                  }
-                })
-              }
-              // Check cell inputs
-              if (row.cells && Array.isArray(row.cells)) {
-                row.cells.forEach((cell, cellIndex) => {
-                  if (typeof cell === "string") {
-                    const cellParts = cell.split(/(____+)/)
-                    cellParts.forEach((part, partIndex) => {
-                      if (/____+/.test(part)) {
-                        const answerKey = `${questionGroup.id}_${question.id}_table_${rowIndex}_${cellIndex + 1}_${partIndex}`
-                        if (answers[answerKey]) {
-                          count++
-                        }
-                      }
-                    })
-                  }
-                })
-              }
-            })
+          const answerKeyMap = getTableAnswerKeyToQuestionNumberMap(questionGroup, question)
+          const questionNumbersAnswered = new Set<number>()
+
+          // Check all answer keys and map them to question numbers
+          answerKeyMap.forEach((questionNum, answerKey) => {
+            if (answers[answerKey] && answers[answerKey].trim() !== "") {
+              questionNumbersAnswered.add(questionNum)
+            }
+          })
+
+          totalQuestions += answerKeyMap.size
+          answeredQuestions += questionNumbersAnswered.size
+        } else if (question.q_type === "NOTE_COMPLETION") {
+          const optionsText = typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+          const blankCount = (optionsText.match(/____+/g) || []).length
+          for (let i = 0; i < blankCount; i++) {
+            totalQuestions++
+            const inputId = `${questionId}_note_${i}`
+            if (answers[inputId] && answers[inputId].trim() !== "") {
+              answeredQuestions++
+            }
           }
         } else if (question.q_type === "MCQ_MULTI") {
           const correctCount = question.correct_answers?.length || 1
-          const selectedCount = Array.isArray(answers[questionId]) ? answers[questionId].length : 0
-          count += Math.min(selectedCount, correctCount)
+          const selectedAnswers = Array.isArray(answers[questionId]) ? answers[questionId] : []
+          const selectedCount = selectedAnswers.length
+          totalQuestions += correctCount
+          // Count as answered if at least one correct answer is selected
+          if (selectedCount > 0) {
+            answeredQuestions += Math.min(selectedCount, correctCount)
+          }
         } else if (question.q_type === "MATCHING_INFORMATION") {
           const rowCount = (question as any).rows?.length || 1
+          totalQuestions += rowCount
           for (let i = 0; i < rowCount; i++) {
-            if (answers[`${questionId}_row_${i}`]) {
-              count++
+            if (answers[`${questionId}_row_${i}`] && answers[`${questionId}_row_${i}`].trim() !== "") {
+              answeredQuestions++
             }
           }
         } else if (question.q_type === "SENTENCE_COMPLETION" || question.q_type === "SUMMARY_COMPLETION") {
-          if (answers[questionId]) {
-            count++
+          const blankCount = (question.q_text?.match(/_+/g) || []).length
+          totalQuestions += blankCount > 0 ? blankCount : 1
+          if (answers[questionId] && answers[questionId].trim() !== "") {
+            answeredQuestions++
           }
         } else if (question.q_type === "MATCHING_HEADINGS") {
           const matchingPassage = getCurrentPartPassages.find((p) => p.type === "matching")
           if (matchingPassage) {
             const underscorePattern = /_{2,}/g
             const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
-            matches.forEach((_, index) => {
-              // Use 1-based indexing for matchingAnswers lookup
-              if (matchingAnswers[questionId]?.[index + 1]) {
-                count++
+            const questionRangeCount = matches.length
+            totalQuestions += questionRangeCount
+            for (let i = 0; i < questionRangeCount; i++) {
+              const positionIndex = i + 1
+              if (matchingAnswers[questionId]?.[positionIndex]) {
+                answeredQuestions++
               }
-            })
-          }
-        } else if (question.q_type === "NOTE_COMPLETION") {
-          const optionsText = typeof question.options === "string" ? question.options : JSON.stringify(question.options)
-          const blankCount = (optionsText.match(/____+/g) || []).length
-          for (let i = 0; i < blankCount; i++) {
-            const inputId = `${questionGroup.id}_${question.id}_note_${i}`
-            if (answers[inputId]) {
-              count++
             }
           }
         } else if (question.q_type === "SUMMARY_DRAG") {
-          // Count answered blanks for SUMMARY_DRAG
           const blanks = question.q_text?.match(/____+/g) || []
+          totalQuestions += blanks.length
           for (let i = 0; i < blanks.length; i++) {
-            const inputId = `${questionId}_blank_${i + 1}` // Note: blankIndex is 1-based in summaryDragAnswers
-            if (answers[inputId]) {
-              count++
+            const inputId = `${questionId}_blank_${i + 1}`
+            if (answers[inputId] && answers[inputId].trim() !== "") {
+              answeredQuestions++
             }
           }
         } else if (question.q_type === "SENTENCE_ENDINGS") {
           const optionsCount = question.options ? Object.keys(question.options).length : 0
+          totalQuestions += optionsCount
           for (let i = 1; i <= optionsCount; i++) {
             const inputId = `${questionId}_option_${i}`
-            if (answers[inputId]) {
-              count++
+            if (answers[inputId] && answers[inputId].trim() !== "") {
+              answeredQuestions++
             }
           }
         } else {
-          if (answers[questionId]) {
-            count++
+          totalQuestions++
+          if (answers[questionId] && answers[questionId].toString().trim() !== "") {
+            answeredQuestions++
           }
         }
       })
     })
 
-    return count
+    return { answered: answeredQuestions, total: totalQuestions }
   }
 
   const getPartQuestionCount = (partNumber: number): number => {
@@ -1809,7 +1836,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 // Count label inputs
                 const labelInputs = (row.label?.match(/____+/g) || []).length
                 count += labelInputs
-                // Count inputs in cells
+                // Count inputs in cells - use row.cells, not question.cells
                 if (row.cells && Array.isArray(row.cells)) {
                   row.cells.forEach((cell) => {
                     const cellInputs = (cell?.match(/____+/g) || []).length
@@ -1896,8 +1923,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
             const labelInputs = (row.label?.match(/____+/g) || []).length
             inputCount += labelInputs
             // Count inputs in cells
-            if (question.cells && Array.isArray(question.cells)) {
-              question.cells.forEach((cell) => {
+            if (row.cells && Array.isArray(row.cells)) {
+              row.cells.forEach((cell) => {
                 const cellInputs = (cell?.match(/____+/g) || []).length
                 inputCount += cellInputs
               })
@@ -2155,20 +2182,28 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   }))
 
                   // Save to localStorage with correct format
-                  const answersKey = `answers_${examId}_reading_${getUserId()}`
+                  const examIdToUse = backendExamId || examId
+                  const answersKey = `answers_${examIdToUse}_reading_${getUserId()}`
                   const existingAnswers = JSON.parse(localStorage.getItem(answersKey) || "[]")
 
                   // Find if this blank already has an answer
                   const existingIndex = existingAnswers.findIndex(
-                    (a: any) => a.questionId === question.id && a.blankNumber === blankIndex + 1,
+                    (a: any) =>
+                      a.questionId === questionGroup.id &&
+                      a.r_questionsID === question.id &&
+                      a.question_type === "SUMMARY_DRAG" &&
+                      Object.keys(a.answer)[0] === String(blankIndex + 1),
                   )
 
                   const answerData = {
                     userId: getUserId(),
-                    questionId: question.id,
+                    questionId: questionGroup.id,
                     r_questionsID: question.id,
-                    answer: choiceKey,
-                    blankNumber: blankIndex + 1,
+                    examId: Number.parseInt(examIdToUse),
+                    question_type: "SUMMARY_DRAG",
+                    answer: {
+                      [blankIndex + 1]: choiceKey,
+                    },
                   }
 
                   if (existingIndex >= 0) {
@@ -2191,12 +2226,19 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   })
 
                   // Remove from localStorage
-                  const answersKey = `answers_${examId}_reading_${getUserId()}`
+                  const examIdToUse = backendExamId || examId
+                  const answersKey = `answers_${examIdToUse}_reading_${getUserId()}`
                   const existingAnswers = JSON.parse(localStorage.getItem(answersKey) || "[]")
                   const filteredAnswers = existingAnswers.filter(
-                    (a: any) => !(a.questionId === question.id && a.blankNumber === blankIndex + 1),
+                    (a: any) =>
+                      !(
+                        a.questionId === questionGroup.id &&
+                        a.r_questionsID === question.id &&
+                        a.question_type === "SUMMARY_DRAG" &&
+                        Object.keys(a.answer)[0] === String(blankIndex + 1)
+                      ),
                   )
-                  localStorage.setItem(answersKey, JSON.stringify(filteredAnswers))
+                  localStorage.setItem(answersKey, JSON.JSON.stringify(filteredAnswers))
                 }
 
                 return (
@@ -2368,8 +2410,10 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               <span className="text-black font-bold">{startNum + index}</span>
                               <input
                                 type="text"
-                                value={answers[`${questionId}_blank_${index + 1}`] || ""}
-                                onChange={(e) => handleAnswerChange(`${questionId}_blank_${index + 1}`, e.target.value)}
+                                value={answers[`${questionId}_note_${index}`] || ""}
+                                onChange={(e) =>
+                                  handleNoteCompletionChange(`${questionId}_note_${index}`, e.target.value)
+                                }
                                 className="w-[181px] h-[17px] px-2 py-0 border border-black text-black bg-white text-sm leading-[20px]"
                                 style={{ fontSize: `${textSize}px` }}
                               />
@@ -2443,7 +2487,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse border border-gray-300">
                         <thead>
-                          <tr>
+                          <tr className="bg-white">
                             {columns.map((col, colIndex) => (
                               <th
                                 key={colIndex}
@@ -2900,7 +2944,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       )}
                     </div>
 
-                    <div className="space-y-[1px] ml-6 mt-[1px]">
+                    <div className="space-y-1 ml-6 mt-[1px]">
                       {question.options.map((option) => {
                         const isSelected = currentAnswer === option.key
                         return (
@@ -3105,7 +3149,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           {question.columns.map((col: string, colIndex: number) => (
                             <th
                               key={colIndex}
-                              className="border border-gray-400 p-2 text-left font-normal text-gray-900"
+                              className="border border-gray-400 px-4 py-2 text-left font-normal text-gray-900"
                               dangerouslySetInnerHTML={{ __html: col }}
                             />
                           ))}
@@ -3134,56 +3178,17 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           return (
                             <tr key={rowIndex}>
                               {/* Row label (first column) */}
-                              <td className="border border-gray-400 p-2 bg-white">
+                              <td className="border border-gray-400 px-4 py-2 bg-white">
                                 <div className="flex flex-wrap items-center gap-1">
-                                  {row.label?.split(/(____+)/).map((part: string, partIndex: number) => {
-                                    if (/____+/.test(part)) {
-                                      const inputNum = currentInputNum++
-                                      const answerKey = `${questionGroup.id}_${question.id}_table_${rowIndex}_0_${partIndex}`
-                                      const currentAnswer = answers[answerKey] || ""
-
-                                      return (
-                                        <Input
-                                          key={partIndex}
-                                          value={currentAnswer}
-                                          onChange={(e) =>
-                                            handleTableCellInputChange(
-                                              questionGroup.id.toString(),
-                                              question.id.toString(),
-                                              rowIndex,
-                                              0, // cellIndex 0 for label
-                                              partIndex,
-                                              e.target.value,
-                                            )
-                                          }
-                                          className={`inline-block w-[140px] h-[20px] px-2 py-0 text-sm
-             bg-white border-black
-             focus:border-blue-400 focus:ring-1 focus:ring-blue-400
-             ${colorStyles.text} rounded-none text-center`}
-                                          placeholder={inputNum.toString()}
-                                        />
-                                      )
-                                    }
-                                    return part ? (
-                                      <span
-                                        key={partIndex}
-                                        className="text-gray-900"
-                                        dangerouslySetInnerHTML={{ __html: part }}
-                                      />
-                                    ) : null
-                                  })}
-                                </div>
-                              </td>
-
-                              {/* Data cells */}
-                              {row.cells?.map((cell: string, cellIndex: number) => (
-                                <td key={cellIndex} className="border border-gray-400 p-2 bg-white">
-                                  <div className="flex flex-wrap items-center gap-1">
-                                    {cell?.split(/(____+)/).map((part: string, partIndex: number) => {
+                                  {(() => {
+                                    let blankIndexInCell = 0
+                                    return row.label?.split(/(____+)/).map((part: string, partIndex: number) => {
                                       if (/____+/.test(part)) {
+                                        blankIndexInCell++
+                                        const currentBlankIndex = blankIndexInCell
                                         const inputNum = currentInputNum++
-                                        const answerKey = `${questionGroup.id}_${question.id}_table_${rowIndex}_${cellIndex + 1}_${partIndex}`
-                                        const currentAnswer = answers[answerKey] || ""
+                                        const answerKey = `${questionGroup.id}_${question.id}_table_${rowIndex + 1}_0_${currentBlankIndex}`
+                                        const currentAnswer = answers[answerKey] ?? ""
 
                                         return (
                                           <Input
@@ -3194,8 +3199,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                                 questionGroup.id.toString(),
                                                 question.id.toString(),
                                                 rowIndex,
-                                                cellIndex + 1, // cellIndex starts from 1 for data cells
-                                                partIndex,
+                                                0, // cellIndex 0 for label column
+                                                currentBlankIndex, // Use captured value instead of closure variable
                                                 e.target.value,
                                               )
                                             }
@@ -3214,7 +3219,56 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                                           dangerouslySetInnerHTML={{ __html: part }}
                                         />
                                       ) : null
-                                    })}
+                                    })
+                                  })()}
+                                </div>
+                              </td>
+
+                              {/* Data cells */}
+                              {row.cells?.map((cell: string, cellIndex: number) => (
+                                <td key={cellIndex} className="border border-gray-400 px-4 py-2 bg-white">
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {(() => {
+                                      let blankIndexInCell = 0
+                                      return cell?.split(/(____+)/).map((part: string, partIndex: number) => {
+                                        if (/____+/.test(part)) {
+                                          blankIndexInCell++
+                                          const currentBlankIndex = blankIndexInCell
+                                          const inputNum = currentInputNum++
+                                          const answerKey = `${questionGroup.id}_${question.id}_table_${rowIndex + 1}_${cellIndex + 1}_${blankIndexInCell}`
+                                          const currentAnswer = answers[answerKey] ?? ""
+
+                                          return (
+                                            <Input
+                                              key={partIndex}
+                                              value={currentAnswer}
+                                              onChange={(e) =>
+                                                handleTableCellInputChange(
+                                                  questionGroup.id.toString(),
+                                                  question.id.toString(),
+                                                  rowIndex,
+                                                  cellIndex + 1, // cellIndex starts from 1 for data columns
+                                                  currentBlankIndex, // Use captured value instead of closure variable
+                                                  e.target.value,
+                                                )
+                                              }
+                                              className={`inline-block w-[140px] h-[20px] px-2 py-0 text-sm
+             bg-white border-black
+             focus:border-blue-400 focus:ring-1 focus:ring-blue-400
+             ${colorStyles.text} rounded-none text-center`}
+                                              placeholder={inputNum.toString()}
+                                            />
+                                          )
+                                        }
+                                        return part ? (
+                                          <span
+                                            key={partIndex}
+                                            className="text-gray-900"
+                                            dangerouslySetInnerHTML={{ __html: part }}
+                                          />
+                                        ) : null
+                                      })
+                                    })()}
                                   </div>
                                 </td>
                               ))}
@@ -3343,19 +3397,19 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 {question.q_type === "SENTENCE_ENDINGS" && question.options && question.choices && (
                   <div className="space-y-4">
                     {/* Questions header */}
-                    <div className="text-xl font-bold mb-2 text-black">
+                    <div className="text-xl font-bold text-black mb-2">
                       Questions {(() => {
                         const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
                         const optionsCount = Object.keys(question.options).length
                         const endNum = startNum + optionsCount - 1
-                        return optionsCount > 1 ? `${startNum}–${endNum}` : startNum
+                        return startNum === endNum ? startNum : `${startNum}–${endNum}`
                       })()}
                     </div>
 
                     {/* Instruction */}
                     {questionGroup.instruction && (
                       <div
-                        className={`text-base leading-relaxed mb-4 ${colorStyles.text}`}
+                        className={`text-base leading-relaxed mb-6 ${colorStyles.text}`}
                         dangerouslySetInnerHTML={{ __html: questionGroup.instruction }}
                       />
                     )}
@@ -3363,7 +3417,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                     {/* Question text if exists */}
                     {question.q_text && (
                       <div
-                        className={`text-lg font-medium mb-4 ${colorStyles.text}`}
+                        className={`text-lg font-medium ${colorStyles.text}`}
                         dangerouslySetInnerHTML={{ __html: question.q_text }}
                       />
                     )}
@@ -3438,6 +3492,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
                           e.preventDefault()
+                          // When dropping back to options area, just clear draggedOption
+                          // The option will automatically reappear in the list since it's been removed from matchingAnswers
+                          setDraggedOption(null)
                         }}
                       >
                         {(() => {
@@ -3566,6 +3623,151 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
         })()}
       </>
     )
+  }
+
+  // Helper function to map TABLE_COMPLETION answer keys to question numbers
+  const getTableAnswerKeyToQuestionNumberMap = (questionGroup: Question, question: any): Map<string, number> => {
+    const map = new Map<string, number>()
+    const questionId = `${questionGroup.id}_${question.id}`
+    let currentQuestionNum = getQuestionNumber(questionId)
+
+    if (question.rows && Array.isArray(question.rows)) {
+      question.rows.forEach((row: any, rowIndex: number) => {
+        // Process label inputs
+        if (row.label) {
+          let blankIndexInLabel = 0
+          const labelParts = row.label.split(/(____+)/)
+          labelParts.forEach((part: string) => {
+            if (/____+/.test(part)) {
+              blankIndexInLabel++
+              const answerKey = `${questionGroup.id}_${question.id}_table_${rowIndex + 1}_0_${blankIndexInLabel}`
+              map.set(answerKey, currentQuestionNum)
+              currentQuestionNum++
+            }
+          })
+        }
+
+        // Process cell inputs
+        if (row.cells && Array.isArray(row.cells)) {
+          row.cells.forEach((cell: string, cellIndex: number) => {
+            let blankIndexInCell = 0
+            const cellParts = cell.split(/(____+)/)
+            cellParts.forEach((part: string) => {
+              if (/____+/.test(part)) {
+                blankIndexInCell++
+                const answerKey = `${questionGroup.id}_${question.id}_table_${rowIndex + 1}_${cellIndex + 1}_${blankIndexInCell}`
+                map.set(answerKey, currentQuestionNum)
+                currentQuestionNum++
+              }
+            })
+          })
+        }
+      })
+    }
+
+    return map
+  }
+
+  const isQuestionAnswered = (questionNumber: number): boolean => {
+    const currentPartData = parts.find((p) => p.part === currentPart)
+    if (!currentPartData) return false
+
+    const questions = getQuestionsForPart(currentPart)
+
+    for (const questionGroup of questions) {
+      for (const question of questionGroup.r_questions || []) {
+        const questionId = `${questionGroup.id}_${question.id}`
+        const startNum = getQuestionNumber(questionId)
+
+        if (question.q_type === "TABLE_COMPLETION") {
+          const answerKeyMap = getTableAnswerKeyToQuestionNumberMap(questionGroup, question)
+
+          // Find the answer key that corresponds to this question number
+          for (const [answerKey, qNum] of answerKeyMap.entries()) {
+            if (qNum === questionNumber) {
+              return !!(answers[answerKey] && answers[answerKey].trim() !== "")
+            }
+          }
+        } else if (question.q_type === "NOTE_COMPLETION") {
+          const optionsText = typeof question.options === "string" ? question.options : JSON.stringify(question.options)
+          const blanks = optionsText.match(/____+/g) || []
+          for (let i = 0; i < blanks.length; i++) {
+            const qNum = startNum + i
+            if (qNum === questionNumber) {
+              const inputId = `${questionId}_note_${i}`
+              return !!(answers[inputId] && answers[inputId].trim() !== "")
+            }
+          }
+        } else if (question.q_type === "MCQ_MULTI") {
+          const correctCount = question.correct_answers?.length || 1
+          const selectedAnswers = Array.isArray(answers[questionId]) ? answers[questionId] : []
+          for (let i = 0; i < correctCount; i++) {
+            const qNum = startNum + i
+            if (qNum === questionNumber) {
+              return selectedAnswers.length > i
+            }
+          }
+        } else if (question.q_type === "MATCHING_INFORMATION") {
+          const rowCount = (question as any).rows?.length || 1
+          for (let i = 0; i < rowCount; i++) {
+            const qNum = startNum + i
+            if (qNum === questionNumber) {
+              const rowQuestionId = `${questionId}_row_${i}`
+              return !!(answers[rowQuestionId] && answers[rowQuestionId].trim() !== "")
+            }
+          }
+        } else if (question.q_type === "SENTENCE_COMPLETION" || question.q_type === "SUMMARY_COMPLETION") {
+          const blanks = question.q_text?.match(/_+/g) || []
+          for (let i = 0; i < blanks.length; i++) {
+            const qNum = startNum + i
+            if (qNum === questionNumber) {
+              return !!(answers[questionId] && answers[questionId].trim() !== "")
+            }
+          }
+        } else if (question.q_type === "MATCHING_HEADINGS") {
+          const matchingPassage = getCurrentPartPassages.find((p) => p.type === "matching")
+          if (matchingPassage) {
+            const underscorePattern = /_{2,}/g
+            const matches = [...matchingPassage.reading_text.matchAll(underscorePattern)]
+            for (let i = 0; i < matches.length; i++) {
+              const qNum = startNum + i
+              if (qNum === questionNumber) {
+                const positionIndex = i + 1
+                return !!matchingAnswers[questionId]?.[positionIndex]
+              }
+            }
+          }
+        } else if (question.q_type === "SUMMARY_DRAG") {
+          const blanks = question.q_text?.match(/____+/g) || []
+          for (let i = 0; i < blanks.length; i++) {
+            const qNum = startNum + i
+            if (qNum === questionNumber) {
+              const inputId = `${questionId}_blank_${i + 1}`
+              return !!(answers[inputId] && answers[inputId].trim() !== "")
+            }
+          }
+        } else if (question.q_type === "SENTENCE_ENDINGS") {
+          const optionsCount = question.options ? Object.keys(question.options).length : 0
+          for (let i = 0; i < optionsCount; i++) {
+            const qNum = startNum + i
+            if (qNum === questionNumber) {
+              const optionKey = (i + 1).toString()
+              return !!sentenceEndingsAnswers[questionId]?.[optionKey]
+            }
+          }
+        } else {
+          // For other question types, check if the single answer exists and is not empty
+          if (startNum === questionNumber) {
+            return !!(answers[questionId] && answers[questionId].trim() !== "")
+          }
+        }
+      }
+    }
+    return false
+  }
+
+  const getCurrentPart = () => {
+    return { part_number: currentPart, range: getPartQuestionRange(currentPart) }
   }
 
   return (
@@ -3817,9 +4019,9 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                   <div className={`mb-8 p-6 rounded-lg border ${colorStyles.cardBg} ${colorStyles.border}`}>
                     <div className="text-xl font-bold text-black mb-2">
                       Questions {(() => {
-                        const questionStartNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
-                        const endNum = questionStartNum + answerCount - 1
-                        return questionStartNum === endNum ? questionStartNum : `${questionStartNum}–${endNum}`
+                        const startNum = getQuestionNumber(`${questionGroup.id}_${question.id}`)
+                        const endNum = startNum + answerCount - 1
+                        return startNum === endNum ? startNum : `${startNum}–${endNum}`
                       })()}
                     </div>
 
@@ -3832,7 +4034,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
 
                     {question.q_text && question.q_text !== "-" && (
                       <div
-                        className={`text-lg font-medium mb-4 ${colorStyles.text}`}
+                        className={`text-lg font-medium ${colorStyles.text}`}
                         dangerouslySetInnerHTML={{ __html: question.q_text }}
                       />
                     )}
@@ -3915,9 +4117,8 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                 <h3 className={`text-lg font-semibold ${colorStyles.text}`}>Parts</h3>
                 <div className="flex flex-wrap gap-2">
                   {[1, 2, 3].map((partNum) => {
-                    const totalQuestions = getPartQuestionCount(partNum)
-                    const answeredCount = getAnsweredCountForPart(partNum)
-                    const isComplete = answeredCount === totalQuestions
+                    const { answered, total } = getAnsweredCountForPart(partNum)
+                    const isComplete = answered === total
                     return (
                       <button
                         key={partNum}
@@ -3933,7 +4134,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                         }`}
                       >
-                        Part {partNum} ({answeredCount}/{totalQuestions})
+                        Part {partNum} ({answered}/{total})
                       </button>
                     )
                   })}
@@ -4092,9 +4293,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
           {/* Parts Navigation */}
           <div className="flex items-center gap-12">
             {getAvailableParts().map((partNum) => {
-              const range = getPartQuestionRange(partNum)
-              const totalQuestions = getPartQuestionCount(partNum)
-              const answeredCount = getAnsweredCountForPart(partNum)
+              const { answered, total } = getAnsweredCountForPart(partNum)
 
               return (
                 <button
@@ -4106,7 +4305,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
-                  Part {partNum} {answeredCount} of {totalQuestions}
+                  Part {partNum} {answered} of {total}
                 </button>
               )
             })}
@@ -4187,7 +4386,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                           const labelParts = row.label.split(/(____+)/)
                           labelParts.forEach((part, partIndex) => {
                             if (/____+/.test(part)) {
-                              const tableQuestionId = `${questionId}_table_${rowIndex}_0_${partIndex}`
+                              const tableQuestionId = `${questionId}_table_${rowIndex + 1}_0_${partIndex + 1}`
                               const isAnswered = !!answers[tableQuestionId]
                               questionButtons.push(
                                 <button
@@ -4213,7 +4412,7 @@ export default function ReadingQuestionsPage({ params }: { params: Promise<{ exa
                               const cellParts = cell.split(/(____+)/)
                               cellParts.forEach((part, partIndex) => {
                                 if (/____+/.test(part)) {
-                                  const tableQuestionId = `${questionId}_table_${rowIndex}_${cellIndex + 1}_${partIndex}`
+                                  const tableQuestionId = `${questionId}_table_${rowIndex + 1}_${cellIndex + 1}_${partIndex + 1}`
                                   const isAnswered = !!answers[tableQuestionId]
                                   questionButtons.push(
                                     <button
